@@ -28,7 +28,8 @@ jobs:
 
       - name: Probe smoke test
         run: |
-          ./build/monado/build/src/xrt/targets/cli/monado-cli probe | tee probe.log
+          # monado-cli logs to stderr, capture both streams
+          ./build/monado/build/src/xrt/targets/cli/monado-cli probe 2>&1 | tee probe.log
           grep -q "rift: Oculus Rift CV1" probe.log
 
       - name: Check SteamVR plugin was built
