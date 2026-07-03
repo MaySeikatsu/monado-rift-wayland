@@ -1,0 +1,47 @@
+{
+  "nodes": {
+    "monado-src": {
+      "flake": false,
+      "locked": {
+        "host": "gitlab.freedesktop.org",
+        "lastModified": 1704550069,
+        "narHash": "sha256-qp1EhOY340ckGjG88vhBlLkFDVI+YXcrR3kLjr4rSEE=",
+        "owner": "monado",
+        "repo": "monado",
+        "rev": "0d662607e43aa3f4207fef2833badffcd0e6eae4",
+        "type": "gitlab"
+      },
+      "original": {
+        "host": "gitlab.freedesktop.org",
+        "owner": "monado",
+        "repo": "monado",
+        "rev": "0d662607e43aa3f4207fef2833badffcd0e6eae4",
+        "type": "gitlab"
+      }
+    },
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1782723713,
+        "narHash": "sha256-oPXCU/SSUokcGaJREHibG1CBX3+s/W7orDWQOZDsEeQ=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "b5aa0fbd538984f6e3d201be0005b4463d8b09f8",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "nixos-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "monado-src": "monado-src",
+        "nixpkgs": "nixpkgs"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}
