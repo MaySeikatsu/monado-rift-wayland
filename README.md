@@ -68,6 +68,28 @@ monado-service
 Connect the CV1's HDMI and USB, plug in at least one sensor camera for 6DoF
 (0 cameras = 3DoF orientation-only mode), and start an OpenXR app.
 
+### Nix / NixOS / home-manager
+
+The repo is also a flake with a package, NixOS + home-manager modules and
+a dev shell:
+
+```sh
+nix run github:MaySeikatsu/monado-rift-wayland#monado-cli -- probe
+nix develop     # hacking environment
+```
+
+```nix
+# NixOS: udev rules + runtime
+imports = [ monado-rift-wayland.nixosModules.default ];
+hardware.oculus-rift-cv1.enable = true;
+
+# home-manager: active runtime + user service
+imports = [ monado-rift-wayland.homeManagerModules.default ];
+programs.monado-rift.enable = true;
+```
+
+See [docs/nix.md](docs/nix.md) for the full guide.
+
 For **SteamVR games** (native and Proton), see
 [docs/steamvr-and-proton.md](docs/steamvr-and-proton.md).
 For compositor specifics (Hyprland, Niri), see
@@ -121,6 +143,7 @@ build.sh                  Superbuild (fetch Monado, integrate, build)
 
 ## Documentation
 
+- [docs/nix.md](docs/nix.md) — Nix flake, NixOS + home-manager modules, dev shell
 - [docs/steamvr-and-proton.md](docs/steamvr-and-proton.md) — SteamVR plugin, OpenComposite, xrizer, Proton launch options
 - [docs/wayland-compositors.md](docs/wayland-compositors.md) — Hyprland, Niri, DRM lease, fallbacks
 - [docs/tracking.md](docs/tracking.md) — sensor setup, 6DoF vs 3DoF, tracking internals
