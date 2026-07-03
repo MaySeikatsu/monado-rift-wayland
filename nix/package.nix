@@ -97,6 +97,16 @@ stdenv.mkDerivation {
     fi
   '';
 
+  postInstall = ''
+    # Monado's unit template concatenates the install prefix with the
+    # (already absolute) bindir, yielding a doubled, broken ExecStart path.
+    for unit in $out/lib/systemd/user/monado.service $out/lib/systemd/user/monado-dev.service; do
+      if [ -f "$unit" ]; then
+        sed -i "s|^ExecStart=.*monado-service.*$|ExecStart=$out/bin/monado-service|" "$unit"
+      fi
+    done
+  '';
+
   meta = with lib; {
     description = "Monado OpenXR runtime with a native Oculus Rift CV1 driver";
     homepage = "https://github.com/MaySeikatsu/monado-rift-wayland";

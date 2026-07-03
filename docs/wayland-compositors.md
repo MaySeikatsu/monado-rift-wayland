@@ -72,6 +72,23 @@ it's handy to verify the driver before wrestling with lease permissions.
 
 ## NVIDIA note
 
+**On NVIDIA + Wayland you currently need to force the Wayland backend:**
+when `DISPLAY` (Xwayland) is set and the GPU is NVIDIA, Monado prefers its
+X11/NVIDIA direct-mode backend, which fails under a Wayland session with
+`vkAcquireXlibDisplayEXT: VK_ERROR_UNKNOWN`. Fix:
+
+```sh
+XRT_COMPOSITOR_FORCE_WAYLAND_DIRECT=1 monado-service
+```
+
+(Verified working on niri + GTX 1060: the compositor hands over the Rift
+connector via DRM lease and the swapchain runs on the headset panel.)
+When running via `services.monado` on NixOS, set it on the unit:
+
+```nix
+systemd.user.services.monado.environment.XRT_COMPOSITOR_FORCE_WAYLAND_DIRECT = "1";
+```
+
 DRM leasing on the proprietary NVIDIA driver historically needed
 `nvidia-drm.modeset=1` and a reasonably new driver. If the lease succeeds
 but you get long frame times, check Monado's compositor log for direct

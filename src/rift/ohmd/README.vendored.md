@@ -27,7 +27,9 @@ Kept minimal on purpose, to make re-syncing with upstream easy:
    `rift_leds_*` helpers extracted from upstream `rift.c` (upstream
    `rift.c` itself is *not* vendored; the Monado driver in `../`
    replaces OpenHMD's device layer).
-4. `drv_oculus_rift/rift-debug-draw.c` is present for reference but not
+4. `drv_oculus_rift/rift-sensor-pose-helper.c` - one noisy `printf`
+   during pose search converted to `LOGV` (marked with a comment).
+5. `drv_oculus_rift/rift-debug-draw.c` is present for reference but not
    compiled (depends on OpenHMD's pipewire debug streams; its header
    stubs all call sites when HAVE_PIPEWIRE is unset).
 

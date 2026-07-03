@@ -150,16 +150,19 @@ rift_hmd_destroy(struct xrt_device *xdev)
 {
 	struct rift_hmd *hmd = rift_hmd(xdev);
 
+	/* Detach from the system FIRST: the io thread feeds our fusion and
+	 * relation history through sys->hmd under dev_mutex, so it must not
+	 * be able to reach us once we start freeing those below. */
+	os_mutex_lock(&hmd->sys->dev_mutex);
+	hmd->sys->hmd = NULL;
+	os_mutex_unlock(&hmd->sys->dev_mutex);
+
 	u_var_remove_root(hmd);
 
 	m_imu_3dof_close(&hmd->fusion);
 	m_relation_history_destroy(&hmd->rh);
 
-	/* Tell the system we are gone. It outlives us via refcounting.
-	 * The io thread reads sys->hmd under dev_mutex. */
-	os_mutex_lock(&hmd->sys->dev_mutex);
-	hmd->sys->hmd = NULL;
-	os_mutex_unlock(&hmd->sys->dev_mutex);
+	/* The system outlives us via refcounting. */
 	rift_system_reference(&hmd->sys, NULL);
 
 	u_device_free(&hmd->base);

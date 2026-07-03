@@ -27,12 +27,15 @@
 
 #include "os/os_time.h"
 
+#include "util/u_debug.h"
 #include "util/u_device.h"
 #include "util/u_misc.h"
 #include "util/u_time.h"
 #include "util/u_var.h"
 
 #include "rift_driver.h"
+
+DEBUG_GET_ONCE_FLOAT_OPTION(rift_eye_height, "RIFT_EYE_HEIGHT", 1.6f)
 
 #define OHMD_GRAVITY_EARTH 9.80665 // m/s²
 
@@ -496,8 +499,7 @@ rift_touch_get_tracked_pose(struct xrt_device *xdev,
 		 * front of and below the head position. */
 		bool is_left = touch->base.device_type == XRT_DEVICE_TYPE_LEFT_HAND_CONTROLLER;
 		relation.pose.position.x = is_left ? -0.2f : 0.2f;
-		relation.pose.position.y = touch->sys->hmd != NULL ? touch->sys->hmd->default_eye_height - 0.35f
-		                                                   : 1.25f;
+		relation.pose.position.y = debug_get_float_option_rift_eye_height() - 0.35f;
 		relation.pose.position.z = -0.35f;
 		relation.relation_flags |= XRT_SPACE_RELATION_POSITION_VALID_BIT;
 	}
@@ -513,15 +515,10 @@ rift_touch_destroy(struct xrt_device *xdev)
 {
 	struct rift_touch *touch = rift_touch(xdev);
 
-	u_var_remove_root(touch);
-
-	m_imu_3dof_close(&touch->fusion);
-	m_relation_history_destroy(&touch->rh);
-
-	rift_touch_clear_calibration(&touch->calibration);
-
-	/* Tell the system this controller is going away. The io thread
-	 * reads sys->touch[] under dev_mutex. */
+	/* Detach from the system FIRST: the io thread feeds our fusion,
+	 * relation history and calibration through sys->touch[] under
+	 * dev_mutex, so it must not be able to reach us once we start
+	 * freeing those below. */
 	os_mutex_lock(&touch->sys->dev_mutex);
 	if (touch->sys->touch[0] == touch) {
 		touch->sys->touch[0] = NULL;
@@ -529,6 +526,15 @@ rift_touch_destroy(struct xrt_device *xdev)
 		touch->sys->touch[1] = NULL;
 	}
 	os_mutex_unlock(&touch->sys->dev_mutex);
+
+	u_var_remove_root(touch);
+
+	m_imu_3dof_close(&touch->fusion);
+	m_relation_history_destroy(&touch->rh);
+
+	rift_touch_clear_calibration(&touch->calibration);
+
+	/* The system outlives us via refcounting. */
 	rift_system_reference(&touch->sys, NULL);
 
 	u_device_free(&touch->base);

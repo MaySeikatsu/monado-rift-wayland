@@ -264,7 +264,8 @@ void rift_evaluate_pose_with_prior (rift_pose_metrics *score, posef *pose,
 					rift_led *match_led = led_info->led;
 					int led_index = match_led->id;
 					if (b->led_id != LED_MAKE_ID (device_id, led_index)) {
-						printf("mismatched LED id %d/%d blob %d (@ %f,%f) has %d/%d\n",
+						/* monado-rift-wayland: was printf, very noisy during pose search */
+						LOGV("mismatched LED id %d/%d blob %d (@ %f,%f) has %d/%d",
 						    device_id, led_index, i, b->x, b->y, device_id, LED_LOCAL_ID (b->led_id));
 						all_led_ids_matched = false;
 					}
