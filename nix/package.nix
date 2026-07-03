@@ -88,6 +88,10 @@ stdenv.mkDerivation {
   cmakeFlags = [
     "-DXRT_BUILD_DRIVER_RIFT=ON"
     "-DXRT_FEATURE_STEAMVR_PLUGIN=ON"
+    # Without this the OpenXR runtime manifest gets a broken relative
+    # library_path under Nix (share/openxr/1/../../.. + absolute store
+    # path), which no OpenXR loader (host or pressure-vessel) can resolve.
+    "-DXRT_OPENXR_INSTALL_ABSOLUTE_RUNTIME_PATH=ON"
   ];
 
   postConfigure = ''
