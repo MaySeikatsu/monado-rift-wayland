@@ -1,0 +1,95 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index fb2b170..671406f 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -343,6 +343,7 @@ option_with_deps(XRT_BUILD_DRIVER_PSVR "Enable PSVR HMD driver" DEPENDS XRT_HAVE
+ option_with_deps(XRT_BUILD_DRIVER_QWERTY "Enable Qwerty driver" DEPENDS XRT_HAVE_SDL2)
+ option_with_deps(XRT_BUILD_DRIVER_REALSENSE "Enable RealSense device driver" DEPENDS XRT_HAVE_REALSENSE)
+ option_with_deps(XRT_BUILD_DRIVER_REMOTE "Enable remote debugging driver" DEPENDS "XRT_HAVE_LINUX OR ANDROID OR WIN32")
++option_with_deps(XRT_BUILD_DRIVER_RIFT "Enable Oculus Rift (CV1) device driver" DEPENDS XRT_HAVE_LIBUSB XRT_HAVE_JPEG)
+ option_with_deps(XRT_BUILD_DRIVER_RIFT_S "Enable Oculus Rift S device driver" DEPENDS XRT_HAVE_HIDAPI XRT_HAVE_V4L2)
+ option_with_deps(XRT_BUILD_DRIVER_ROKID "Enable Rokid driver" DEPENDS "XRT_HAVE_LIBUSB")
+ option_with_deps(XRT_BUILD_DRIVER_STEAMVR_LIGHTHOUSE "Enable SteamVR Lighthouse driver" DEPENDS XRT_HAVE_LINUX XRT_HAVE_STEAM XRT_MODULE_AUX_VIVE)
+@@ -474,6 +475,7 @@ list(
+ 	"PSVR"
+ 	"REALSENSE"
+ 	"REMOTE"
++	"RIFT"
+ 	"RIFT_S"
+ 	"ROKID"
+ 	"SURVIVE"
+@@ -692,6 +694,7 @@ message(STATUS "#    DRIVER_PSVR:                 ${XRT_BUILD_DRIVER_PSVR}")
+ message(STATUS "#    DRIVER_QWERTY:               ${XRT_BUILD_DRIVER_QWERTY}")
+ message(STATUS "#    DRIVER_REALSENSE:            ${XRT_BUILD_DRIVER_REALSENSE}")
+ message(STATUS "#    DRIVER_REMOTE:               ${XRT_BUILD_DRIVER_REMOTE}")
++message(STATUS "#    DRIVER_RIFT:                 ${XRT_BUILD_DRIVER_RIFT}")
+ message(STATUS "#    DRIVER_RIFT_S:               ${XRT_BUILD_DRIVER_RIFT_S}")
+ message(STATUS "#    DRIVER_ROKID:                ${XRT_BUILD_DRIVER_ROKID}")
+ message(STATUS "#    DRIVER_SIMULATED:            ${XRT_BUILD_DRIVER_SIMULATED}")
+diff --git a/src/xrt/drivers/CMakeLists.txt b/src/xrt/drivers/CMakeLists.txt
+index 32070e5..396df2a 100644
+--- a/src/xrt/drivers/CMakeLists.txt
++++ b/src/xrt/drivers/CMakeLists.txt
+@@ -277,6 +277,10 @@ if(XRT_BUILD_DRIVER_RIFT_S)
+ 	list(APPEND ENABLED_HEADSET_DRIVERS rift-s)
+ endif()
+ 
++if(XRT_BUILD_DRIVER_RIFT)
++	include(rift/drv_rift.cmake)
++endif()
++
+ set(VIVE_CONFIG_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/vive")
+ if(XRT_BUILD_DRIVER_VIVE)
+ 	add_library(
+diff --git a/src/xrt/targets/common/CMakeLists.txt b/src/xrt/targets/common/CMakeLists.txt
+index f1fcc9c..3914924 100644
+--- a/src/xrt/targets/common/CMakeLists.txt
++++ b/src/xrt/targets/common/CMakeLists.txt
+@@ -24,6 +24,10 @@ if(XRT_BUILD_DRIVER_PSVR OR XRT_BUILD_DRIVER_PSMV)
+ 	target_sources(target_lists PRIVATE target_builder_rgb_tracking.c)
+ endif()
+ 
++if(XRT_BUILD_DRIVER_RIFT)
++	target_sources(target_lists PRIVATE target_builder_rift.c)
++endif()
++
+ if(XRT_BUILD_DRIVER_RIFT_S)
+ 	target_sources(target_lists PRIVATE target_builder_rift_s.c)
+ endif()
+@@ -146,6 +150,10 @@ if(XRT_BUILD_DRIVER_REMOTE)
+ 	target_link_libraries(target_lists PRIVATE drv_remote)
+ endif()
+ 
++if(XRT_BUILD_DRIVER_RIFT)
++	target_link_libraries(target_lists PRIVATE drv_rift)
++endif()
++
+ if(XRT_BUILD_DRIVER_RIFT_S)
+ 	target_link_libraries(target_lists PRIVATE drv_rift_s)
+ endif()
+diff --git a/src/xrt/targets/common/target_lists.c b/src/xrt/targets/common/target_lists.c
+index 91001b9..c00bfb0 100644
+--- a/src/xrt/targets/common/target_lists.c
++++ b/src/xrt/targets/common/target_lists.c
+@@ -40,6 +40,10 @@
+ #include "psvr/psvr_interface.h"
+ #endif
+ 
++#ifdef XRT_BUILD_DRIVER_RIFT
++#include "rift/rift_interface.h"
++#endif
++
+ #ifdef XRT_BUILD_DRIVER_RIFT_S
+ #include "rift_s/rift_s_interface.h"
+ #endif
+@@ -116,6 +120,10 @@ xrt_builder_create_func_t target_builder_list[] = {
+     t_builder_simulated_create,
+ #endif // T_BUILDER_SIMULATED
+ 
++#ifdef XRT_BUILD_DRIVER_RIFT
++    rift_builder_create,
++#endif // XRT_BUILD_DRIVER_RIFT
++
+ #ifdef XRT_BUILD_DRIVER_RIFT_S
+     rift_s_builder_create,
+ #endif // XRT_BUILD_DRIVER_RIFT_S
