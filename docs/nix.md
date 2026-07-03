@@ -50,6 +50,13 @@ devices aren't accessible from your user.)
 Optionally run it as a user service via nixpkgs' own Monado module,
 pointed at this package:
 
+> **Important:** if you already had `services.monado.enable = true;` with
+> the *default* nixpkgs package, you MUST set the package as below. The
+> stock Monado's OpenHMD driver claims the CV1's USB interfaces over
+> libusb and blocks this driver with
+> `Could not find the requested hid interface (0) on the device!`
+> (the module emits a warning if it detects this).
+
 ```nix
 services.monado = {
   enable = true;

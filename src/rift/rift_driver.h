@@ -239,6 +239,17 @@ void
 rift_system_reference(struct rift_system **dst, struct rift_system *src);
 
 /*!
+ * If a previous runtime (OpenHMD via hidapi-libusb, another Monado, a
+ * crashed process) detached the kernel HID driver from the headset's USB
+ * interfaces and never reattached it, no hidraw nodes exist and probing
+ * fails. This asks the kernel to take unbound interfaces back.
+ *
+ * @return true if at least one interface was reattached.
+ */
+bool
+rift_usb_reattach_kernel_driver(uint16_t vid, uint16_t pid);
+
+/*!
  * Push the current tracker (or fusion fallback) pose of a tracked device
  * into the given relation history. Called from the io thread.
  */

@@ -19,6 +19,7 @@
 self:
 {
   config,
+  options,
   lib,
   pkgs,
   ...
@@ -48,5 +49,23 @@ in
   config = lib.mkIf cfg.enable {
     services.udev.packages = [ self.packages.${system}.udev-rules ];
     environment.systemPackages = lib.mkIf cfg.installPackage [ cfg.package ];
+
+    # The stock nixpkgs Monado ships the OpenHMD wrapper driver, which
+    # claims the CV1's USB interfaces over libusb (detaching the kernel
+    # HID driver) and blocks this driver. Two runtimes must not fight
+    # over the headset.
+    warnings =
+      lib.optional
+        (
+          options.services ? monado
+          && config.services.monado.enable
+          && config.services.monado.package != cfg.package
+        )
+        ''
+          hardware.oculus-rift-cv1: services.monado is enabled with a different
+          Monado package. The stock Monado (via its OpenHMD driver) will claim the
+          Rift CV1 over libusb and block the Rift driver. Set:
+            services.monado.package = config.hardware.oculus-rift-cv1.package;
+        '';
   };
 }

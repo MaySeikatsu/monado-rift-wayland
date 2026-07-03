@@ -16,6 +16,35 @@ lsusb | grep 2833
   sudo ./scripts/install-udev-rules.sh
   ```
 
+## "Could not find the requested hid interface (0) on the device!"
+
+Another VR runtime is (or was) holding the headset's USB interfaces over
+libusb, which detaches the kernel HID driver — so no `/dev/hidraw*` nodes
+exist for the headset and this driver can't open it. Typical culprits:
+
+- **A stock Monado instance** (e.g. NixOS `services.monado` with the
+  default nixpkgs package): its OpenHMD wrapper driver opens the CV1 via
+  hidapi-libusb. Stop it (`systemctl --user stop monado.service
+  monado.socket`) and make sure only one Monado is installed/enabled —
+  on NixOS point `services.monado.package` at this flake's package.
+- OpenHMD-based software, SteamVR, or a crashed process that never
+  reattached the kernel driver.
+
+You can confirm with:
+
+```sh
+for i in /sys/bus/usb/devices/*:*; do
+  v=$(cat $(dirname $i)/$(basename $i | cut -d: -f1)/idVendor 2>/dev/null)
+  [ "$v" = 2833 ] && echo "$i -> $(basename $(readlink $i/driver 2>/dev/null))"
+done
+# "usbfs" = claimed by a running process; empty = left detached
+```
+
+The driver now self-heals the "left detached" case: it reattaches the
+kernel driver and re-probes automatically at startup. If the interfaces
+are actively claimed (`usbfs`) you must stop the owning process first;
+worst case, re-plug the headset's USB cable.
+
 ## Display stays black / no direct mode
 
 - Confirm the HDMI is connected and the compositor sees a non-desktop

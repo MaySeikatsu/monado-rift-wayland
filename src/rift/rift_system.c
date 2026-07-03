@@ -17,6 +17,7 @@
  */
 
 #include <errno.h>
+#include <libusb.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -815,4 +816,67 @@ rift_system_get_controller(struct rift_system *sys, int index)
 		return NULL;
 	}
 	return &sys->touch[index]->base;
+}
+
+/*
+ *
+ * USB fixup helper.
+ *
+ */
+
+bool
+rift_usb_reattach_kernel_driver(uint16_t vid, uint16_t pid)
+{
+	libusb_context *ctx = NULL;
+	libusb_device **devs = NULL;
+	bool reattached = false;
+
+	if (libusb_init(&ctx) != 0) {
+		return false;
+	}
+
+	ssize_t count = libusb_get_device_list(ctx, &devs);
+	for (ssize_t i = 0; i < count; i++) {
+		struct libusb_device_descriptor desc;
+		if (libusb_get_device_descriptor(devs[i], &desc) != 0) {
+			continue;
+		}
+		if (desc.idVendor != vid || desc.idProduct != pid) {
+			continue;
+		}
+
+		libusb_device_handle *handle = NULL;
+		if (libusb_open(devs[i], &handle) != 0) {
+			continue;
+		}
+
+		int n_ifaces = 2;
+		struct libusb_config_descriptor *config = NULL;
+		if (libusb_get_active_config_descriptor(devs[i], &config) == 0) {
+			n_ifaces = config->bNumInterfaces;
+			libusb_free_config_descriptor(config);
+		}
+
+		for (int iface = 0; iface < n_ifaces; iface++) {
+			/* 0 = no kernel driver bound. 1 covers both usbhid and
+			 * a live usbfs claim by another process; in the latter
+			 * case attaching would fail anyway, so leave it be. */
+			if (libusb_kernel_driver_active(handle, iface) != 0) {
+				continue;
+			}
+			if (libusb_attach_kernel_driver(handle, iface) == 0) {
+				RIFT_INFO("Reattached kernel HID driver to %04x:%04x interface %d "
+				          "(a previous runtime left it detached)",
+				          vid, pid, iface);
+				reattached = true;
+			}
+		}
+		libusb_close(handle);
+	}
+
+	if (devs != NULL) {
+		libusb_free_device_list(devs, 1);
+	}
+	libusb_exit(ctx);
+	return reattached;
 }

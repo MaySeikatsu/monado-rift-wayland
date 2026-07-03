@@ -12,6 +12,7 @@
 #include <stdlib.h>
 
 #include "os/os_hid.h"
+#include "os/os_time.h"
 
 #include "xrt/xrt_config_drivers.h"
 #include "xrt/xrt_prober.h"
@@ -123,6 +124,18 @@ rift_open_system_impl(struct xrt_builder *xb,
 
 	rift_log_level = debug_get_log_option_rift_log();
 
+	/* If a previous runtime (OpenHMD via hidapi-libusb, an old Monado,
+	 * a crashed process) left the headset's HID interfaces without a
+	 * kernel driver, there are no hidraw nodes and probing would fail.
+	 * Reattach and re-probe so the fresh nodes are in the device list. */
+	if (rift_usb_reattach_kernel_driver(OCULUS_VR_INC_VID, OCULUS_RIFT_CV1_PID)) {
+		os_nanosleep(250 * 1000 * 1000); // let udev create the hidraw nodes
+		xret = xrt_prober_probe(xp);
+		if (xret != XRT_SUCCESS) {
+			return xret;
+		}
+	}
+
 	xret = xrt_prober_lock_list(xp, &xpdevs, &xpdev_count);
 	if (xret != XRT_SUCCESS) {
 		goto unlock_and_fail;
@@ -136,7 +149,9 @@ rift_open_system_impl(struct xrt_builder *xb,
 	struct os_hid_device *hid_hmd = NULL;
 	int result = xrt_prober_open_hid_interface(xp, dev_hmd, RIFT_CV1_HMD_INTERFACE, &hid_hmd);
 	if (result != 0) {
-		RIFT_ERROR("Failed to open Rift HMD HID interface");
+		RIFT_ERROR("Failed to open the Rift HMD HID interface. If this persists, another VR runtime "
+		           "(OpenHMD, SteamVR, another Monado instance) is probably holding the headset's USB "
+		           "interfaces - stop it, then re-plug the headset or restart this service.");
 		goto unlock_and_fail;
 	}
 
@@ -146,7 +161,7 @@ rift_open_system_impl(struct xrt_builder *xb,
 		result = xrt_prober_open_hid_interface(xp, dev_hmd, RIFT_CV1_RADIO_INTERFACE, &hid_radio);
 		if (result != 0) {
 			os_hid_destroy(hid_hmd);
-			RIFT_ERROR("Failed to open Rift radio HID interface");
+			RIFT_ERROR("Failed to open the Rift radio HID interface (see the HMD interface hint above)");
 			goto unlock_and_fail;
 		}
 	}
