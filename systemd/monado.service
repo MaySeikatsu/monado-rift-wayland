@@ -1,0 +1,26 @@
+# Copyright 2025, monado-rift-wayland contributors.
+# SPDX-License-Identifier: BSL-1.0
+#
+# User service for the Monado OpenXR runtime with the Rift CV1 driver.
+# Install:
+#   mkdir -p ~/.config/systemd/user
+#   cp systemd/monado.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user start monado   # or: enable --now for autostart
+#
+# Alternatively just run monado-service from a terminal to see the logs.
+
+[Unit]
+Description=Monado OpenXR runtime (Oculus Rift CV1)
+Documentation=https://monado.freedesktop.org
+
+[Service]
+ExecStart=/usr/local/bin/monado-service
+# Tracing/log verbosity of the Rift driver: trace/debug/info/warn/error
+Environment=RIFT_LOG=info
+# Uncomment to force 3DoF (no camera sensors):
+#Environment=RIFT_DISABLE_TRACKER=1
+Restart=no
+
+[Install]
+WantedBy=default.target

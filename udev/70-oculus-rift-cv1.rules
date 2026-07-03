@@ -1,0 +1,16 @@
+# Copyright 2025, monado-rift-wayland contributors.
+# SPDX-License-Identifier: BSL-1.0
+#
+# udev rules for the Oculus Rift CV1, its Touch controller radio link and
+# the Rift constellation tracking sensors (cameras).
+#
+# Install to /etc/udev/rules.d/ and reload:
+#   sudo udevadm control --reload && sudo udevadm trigger
+
+# Oculus VR HID devices (CV1 HMD interface 0, radio interface 1, DK2, remote)
+KERNEL=="hidraw*", ATTRS{idVendor}=="2833", MODE="0660", TAG+="uaccess"
+
+# Raw USB access for the whole Oculus VR vendor id. The constellation
+# tracking sensors (CV1 sensor 2833:0211, DK2 camera 2833:0201) are driven
+# directly over libusb and have no kernel driver.
+SUBSYSTEM=="usb", ATTRS{idVendor}=="2833", MODE="0660", TAG+="uaccess"

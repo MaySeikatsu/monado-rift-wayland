@@ -1,0 +1,35 @@
+# Copyright 2025, monado-rift-wayland contributors.
+# SPDX-License-Identifier: BSL-1.0
+name: build
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  superbuild:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            git cmake ninja-build pkg-config build-essential \
+            libusb-1.0-0-dev libjpeg-dev libeigen3-dev libudev-dev \
+            libvulkan-dev glslang-tools libgl1-mesa-dev \
+            libx11-xcb-dev libxcb-randr0-dev libxrandr-dev \
+            libwayland-dev wayland-protocols libdrm-dev \
+            libhidapi-dev libbluetooth-dev libopencv-dev
+
+      - name: Superbuild (fetch Monado, integrate driver, build)
+        run: ./build.sh
+
+      - name: Probe smoke test
+        run: |
+          ./build/monado/build/src/xrt/targets/cli/monado-cli probe | tee probe.log
+          grep -q "rift: Oculus Rift CV1" probe.log
+
+      - name: Check SteamVR plugin was built
+        run: test -f build/monado/build/steamvr-monado/driver.vrdrivermanifest
