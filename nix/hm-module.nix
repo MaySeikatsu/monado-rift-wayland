@@ -74,8 +74,19 @@ in
   config = lib.mkIf cfg.enable {
     home.packages = [ cfg.package ];
 
+    # Written as inline text (a regular file in the home-manager store dir,
+    # one symlink hop from ~/.config) rather than source = "${pkg}/...".
+    # source = would create a two-hop symlink chain, which Steam's
+    # pressure-vessel OpenXR runtime import cannot follow - Proton games
+    # then fail with XR_ERROR_RUNTIME_UNAVAILABLE.
     xdg.configFile."openxr/1/active_runtime.json" = lib.mkIf cfg.defaultRuntime {
-      source = "${cfg.package}/share/openxr/1/openxr_monado.json";
+      text = builtins.toJSON {
+        file_format_version = "1.0.0";
+        runtime = {
+          name = "Monado";
+          library_path = "${cfg.package}/lib/libopenxr_monado.so";
+        };
+      };
     };
 
     systemd.user.services.monado-rift = lib.mkIf cfg.service.enable {

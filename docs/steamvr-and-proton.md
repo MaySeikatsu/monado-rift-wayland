@@ -49,17 +49,52 @@ cargo build --release   # in the xrizer checkout
 
 ### Proton (Windows) titles
 
-For Windows VR titles running under Proton you need:
+Getting a Proton VR game (native OpenXR, e.g. Beat Saber; or OpenVR via
+xrizer/OpenComposite) talking to Monado through the Steam Linux Runtime
+container has two hard requirements that took real debugging to pin down:
 
-- **Proton 9 or newer** (OpenXR support in pressure-vessel).
-- The launch option below, because the Steam Linux Runtime container hides
-  the host's OpenXR runtime by default:
+**1. Use GE-Proton, not Valve's Proton Experimental / Proton 9-11.**
+
+Valve's `wineopenxr` deliberately gates VR initialization on a registry
+key (`HKCU\Software\Wine\VR` `state`) that *only SteamVR* sets. With any
+other OpenXR runtime its `xrNegotiateLoaderRuntimeInterface` returns
+error `-6` and the game fails with `XR_ERROR_RUNTIME_UNAVAILABLE` — even
+though the runtime, manifest and IPC socket are all perfectly reachable
+inside the container. [GE-Proton](https://github.com/GloriousEggroll/proton-ge-custom)
+carries a patched `wineopenxr` without that SteamVR gate.
+
+Set it under *Properties → Compatibility → Force GE-Proton*.
+
+**2. Share the Monado IPC socket into the container.**
+
+pressure-vessel imports the OpenXR runtime manifest automatically (it
+reads `~/.config/openxr/1/active_runtime.json`), but it does *not* share
+`$XDG_RUNTIME_DIR/monado_comp_ipc`, so the game can load the runtime but
+never reach the running service. You'd normally pass
+`PRESSURE_VESSEL_FILESYSTEMS_RW=$XDG_RUNTIME_DIR/monado_comp_ipc`, but
+**Steam strips `PRESSURE_VESSEL_*` from env-prefix launch options**, so it
+has to be set by a tiny wrapper that Steam execs. Ship this as
+`~/.local/bin/monado-vr-wrap`:
+
+```sh
+#!/bin/sh
+export PRESSURE_VESSEL_FILESYSTEMS_RW="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/monado_comp_ipc"
+exec "$@"
+```
+
+and set the launch option to:
 
 ```
-PRESSURE_VESSEL_IMPORT_OPENXR_1_RUNTIMES=1 %command%
+/home/you/.local/bin/monado-vr-wrap %command%
 ```
 
-Set it per game under *Properties → Launch Options*.
+> Note: `PRESSURE_VESSEL_IMPORT_OPENXR_1_RUNTIMES=1` is **not** needed and
+> on NixOS is counterproductive — the manifest is already visible, and the
+> importer's host-side probing fails on NixOS' library layout.
+
+Verified working end-to-end: Beat Saber (native Unity OpenXR) reaches
+`XR_SESSION_STATE_FOCUSED` and Monado logs `BEGIN_SESSION` on the Rift CV1
+via GE-Proton + the wrapper.
 
 With xrizer/OpenComposite handling OpenVR titles and Monado exposing the
 full Oculus Touch profile, both native Linux VR games and
