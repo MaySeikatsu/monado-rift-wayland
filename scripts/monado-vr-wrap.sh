@@ -14,4 +14,8 @@
 # Steam strips PRESSURE_VESSEL_* from env-prefix launch options, so this must
 # be a wrapper that sets the var and then execs the game command.
 export PRESSURE_VESSEL_FILESYSTEMS_RW="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/monado_comp_ipc"
+# A session-wide SDL_VIDEODRIVER=wayland leaks into wine's Windows SDL
+# (which has no wayland/x11 drivers) and breaks window creation on
+# X11-only Proton builds (e.g. Valve Proton 8, needed for Alyx).
+unset SDL_VIDEODRIVER
 exec "$@"

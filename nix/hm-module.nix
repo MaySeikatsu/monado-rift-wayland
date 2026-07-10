@@ -69,6 +69,49 @@ in
       };
       description = "Environment variables for the monado-service unit (RIFT_LOG, RIFT_DISABLE_TRACKER, XRT_COMPOSITOR_* ...).";
     };
+
+    openvr = {
+      enable = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = ''
+          Register xrizer (an OpenVR implementation on top of OpenXR) as
+          the active OpenVR runtime via
+          {file}`~/.config/openvr/openvrpaths.vrpath`. This is what lets
+          OpenVR games - both native Linux and Windows-via-Proton (the
+          Proton vrclient bridge resolves the host runtime through this
+          file) - run against Monado without SteamVR. The file is a
+          read-only store symlink, which also stops Steam from putting
+          SteamVR back as the first runtime on every start.
+        '';
+      };
+
+      xrizerPackage = lib.mkOption {
+        type = lib.types.package;
+        default = pkgs.xrizer;
+        defaultText = lib.literalExpression "pkgs.xrizer";
+        description = "The xrizer package providing lib/xrizer/bin/linux64/vrclient.so.";
+      };
+
+      steamPath = lib.mkOption {
+        type = lib.types.str;
+        default = "${config.home.homeDirectory}/.local/share/Steam";
+        defaultText = lib.literalExpression "\"\${config.home.homeDirectory}/.local/share/Steam\"";
+        description = "Steam root used for the config/log entries of openvrpaths.vrpath.";
+      };
+    };
+
+    steamWrapper.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Install the Steam launch-option wrapper at
+        {file}`~/.local/bin/monado-vr-wrap`. Use it as the launch option
+        `~/.local/bin/monado-vr-wrap %command%` for every VR game: it
+        shares the Monado IPC socket with Steam's pressure-vessel
+        container and scrubs environment variables that break Proton.
+      '';
+    };
   };
 
   config = lib.mkIf cfg.enable {
@@ -87,6 +130,26 @@ in
           library_path = "${cfg.package}/lib/libopenxr_monado.so";
         };
       };
+    };
+
+    # OpenVR runtime registration. xrizer only: listing SteamVR here (even
+    # second) is pointless because Steam rewrites this file at startup when
+    # it is writable, putting SteamVR first and silently breaking the whole
+    # OpenVR->Monado chain. The read-only store symlink prevents that.
+    xdg.configFile."openvr/openvrpaths.vrpath" = lib.mkIf cfg.openvr.enable {
+      text = builtins.toJSON {
+        config = [ "${cfg.openvr.steamPath}/config" ];
+        external_drivers = null;
+        jsonid = "vrpathreg";
+        log = [ "${cfg.openvr.steamPath}/logs" ];
+        runtime = [ "${cfg.openvr.xrizerPackage}/lib/xrizer" ];
+        version = 1;
+      };
+    };
+
+    home.file.".local/bin/monado-vr-wrap" = lib.mkIf cfg.steamWrapper.enable {
+      source = ../scripts/monado-vr-wrap.sh;
+      executable = true;
     };
 
     systemd.user.services.monado-rift = lib.mkIf cfg.service.enable {
