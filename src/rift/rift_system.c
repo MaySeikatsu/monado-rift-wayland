@@ -35,6 +35,7 @@
 #include "rift_interface.h"
 
 DEBUG_GET_ONCE_BOOL_OPTION(rift_disable_tracker, "RIFT_DISABLE_TRACKER", false)
+DEBUG_GET_ONCE_FLOAT_OPTION(rift_eye_height, "RIFT_EYE_HEIGHT", 1.6f)
 
 #define OHMD_GRAVITY_EARTH 9.80665 // m/s²
 
@@ -525,17 +526,20 @@ rift_system_recenter(struct rift_system *sys)
 	struct xrt_vec3 up = {0, 1, 0};
 	math_quat_from_angle_vector(alpha, &up, &sys->world_from_tracker.orientation);
 
-	/* Put the corrected HMD XZ at the origin; keep the tracker's floor
-	 * height so standing/room scale stays right. */
+	/* Put the corrected HMD XZ at the origin, and the floor RIFT_EYE_HEIGHT
+	 * below the eyes. The tracker's own y=0 is wherever the HMD sat at
+	 * camera lock (usually a desk), so it can't be used as a floor -
+	 * instead assume the wearer is standing when they recenter. */
+	float eye_height = debug_get_float_option_rift_eye_height();
 	struct xrt_vec3 p = {pose.pos.x, pose.pos.y, pose.pos.z};
 	struct xrt_vec3 rp;
 	math_quat_rotate_vec3(&sys->world_from_tracker.orientation, &p, &rp);
 	sys->world_from_tracker.position.x = -rp.x;
-	sys->world_from_tracker.position.y = 0;
+	sys->world_from_tracker.position.y = eye_height - rp.y;
 	sys->world_from_tracker.position.z = -rp.z;
 
-	RIFT_INFO("Recentered playspace: yaw correction %.1f deg, origin offset (%.2f, %.2f)",
-	          alpha * 180.0 / M_PI, -rp.x, -rp.z);
+	RIFT_INFO("Recentered playspace: yaw correction %.1f deg, origin offset (%.2f, %.2f), eyes at %.2f m",
+	          alpha * 180.0 / M_PI, -rp.x, -rp.z, eye_height);
 
 	/* Confirmation buzz on the right controller, if we have one. */
 	struct rift_touch *touch = sys->touch[1];
@@ -713,8 +717,12 @@ rift_system_create(struct xrt_prober *xp,
 	sys->base.offset.orientation.w = 1.0f;
 
 	/* Tracker world -> reported world: starts as a 180° Y rotation (see
-	 * rift_system_push_device_pose), replaced on recenter. */
+	 * rift_system_push_device_pose), replaced on recenter. The initial y
+	 * offset assumes the headset is near where it will be worn; a recenter
+	 * (while standing) calibrates it exactly. Matches the 3DoF fallback
+	 * height, so poses don't jump when camera lock is acquired. */
 	sys->world_from_tracker.orientation.y = 1.0f;
+	sys->world_from_tracker.position.y = debug_get_float_option_rift_eye_height();
 
 	os_mutex_init(&sys->dev_mutex);
 	os_thread_helper_init(&sys->oth);

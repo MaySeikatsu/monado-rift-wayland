@@ -73,10 +73,11 @@ monado-service
 Connect the CV1's HDMI and USB, plug in at least one sensor camera for 6DoF
 (0 cameras = 3DoF orientation-only mode), and start an OpenXR app.
 
-Once in VR, **hold the right Touch controller's Oculus button for ~1 second**
-(a short buzz confirms) to recenter: the direction you're facing becomes
-forward and where you stand becomes the origin. Without controllers:
-`touch $XDG_RUNTIME_DIR/monado-rift-recenter`.
+Once in VR, **stand up and hold the right Touch controller's Oculus button
+for ~1 second** (a short buzz confirms) to recenter: the direction you're
+facing becomes forward, where you stand becomes the origin, and the floor
+is placed `RIFT_EYE_HEIGHT` (default 1.6 m) below your eyes. Without
+controllers: `touch $XDG_RUNTIME_DIR/monado-rift-recenter`.
 
 ### Nix / NixOS / home-manager
 
@@ -135,10 +136,9 @@ synchronised to the headset's LED blink phase via the radio ID.
 | --- | --- | --- |
 | `RIFT_LOG` | `info` | Driver + tracker log level (`trace`/`debug`/`info`/`warn`/`error`) |
 | `RIFT_DISABLE_TRACKER` | `false` | Force 3DoF, don't touch the cameras |
-| `RIFT_EYE_HEIGHT` | `1.6` | Eye height (m) used for the fixed position in 3DoF mode |
+| `RIFT_EYE_HEIGHT` | `1.6` | Eye height (m): floor distance below the eyes on recenter (stand up while recentering), also the fixed height in 3DoF mode |
 | `RIFT_ENABLE_DK2` | `false` | Also probe for a DK2 (experimental) |
 | `XRT_COMPOSITOR_FORCE_WAYLAND_DIRECT` | `false` | Force the Wayland DRM-lease direct-mode backend (recommended on Wayland + NVIDIA) |
-| `XRT_TRACKING_ORIGIN_OFFSET_Y` | `0` | Monado core: lift the tracked world (meters) — floor-height calibration |
 | `XRT_COMPOSITOR_LOG` | `info` | Compositor logging, useful for display debugging |
 
 ## Repository layout

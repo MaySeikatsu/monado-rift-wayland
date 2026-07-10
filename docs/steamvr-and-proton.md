@@ -144,9 +144,10 @@ Launch option for every VR game:
 - **Game takes 10–20 min to appear after a Proton/config change** — Steam
   runs shader precompilation (`iscriptevaluator`, fossilize) first; on a
   HDD this is slow. Don't diagnose a hang before it finishes.
-- **World faces the wrong way / you spawn off-center** — recenter: hold the
-  right Touch **Oculus button** ~1 s (buzz confirms), or
-  `touch $XDG_RUNTIME_DIR/monado-rift-recenter`.
+- **World faces the wrong way / you spawn off-center / UI too low or far**
+  — recenter **while standing**: hold the right Touch **Oculus button** ~1 s
+  (buzz confirms), or `touch $XDG_RUNTIME_DIR/monado-rift-recenter`. It sets
+  forward, origin and floor height (`RIFT_EYE_HEIGHT` below your eyes).
 
 ## SteamVR itself (Valve's runtime): status
 

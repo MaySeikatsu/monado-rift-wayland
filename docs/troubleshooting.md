@@ -80,15 +80,23 @@ worst case, re-plug the headset's USB cable.
 
 ## World faces the wrong way / you spawn off-center
 
-The tracker's world frame is anchored when tracking first locks, which
-rarely matches the direction you want to play in. Recenter at runtime:
+The tracker's world frame is anchored when tracking first locks (usually
+with the headset still on a desk), which rarely matches the direction you
+want to play in — or a sensible floor height. Recenter at runtime, **while
+standing**:
 
 - **hold the right Touch controller's Oculus button ~1 s** — a short buzz
   confirms; the direction you face becomes forward, your position the
-  origin (floor height is kept), or
+  origin, and the floor is placed `RIFT_EYE_HEIGHT` (default 1.6 m) below
+  your eyes — set that variable to your own eye height for an exact
+  floor, or
 - `touch $XDG_RUNTIME_DIR/monado-rift-recenter` from a terminal, or
 - `monado-ctl -c` (recenters the LOCAL space only; the file/button
   recenter moves the whole world including STAGE).
+
+If in-game UI sits too low / too far and you find yourself looking down
+at it, that's the floor-height half of the same problem — recenter while
+standing.
 
 ## Game shows a black screen but no error
 

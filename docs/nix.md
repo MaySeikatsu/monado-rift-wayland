@@ -69,11 +69,9 @@ systemd.user.services.monado.environment = {
   # NVIDIA + Wayland: without this Monado picks its X11 backend and
   # fails to acquire the headset display.
   XRT_COMPOSITOR_FORCE_WAYLAND_DIRECT = "1";
-  # Floor height: the tracker's y=0 is roughly at headset level, so
-  # lift the world (meters). Tune live with
-  #   systemctl --user set-environment XRT_TRACKING_ORIGIN_OFFSET_Y=<v>
-  #   systemctl --user restart monado.service
-  XRT_TRACKING_ORIGIN_OFFSET_Y = "0.9";
+  # Your eye height (m): recentering while standing places the floor
+  # this far below your eyes. Default 1.6.
+  RIFT_EYE_HEIGHT = "1.6";
 };
 ```
 
