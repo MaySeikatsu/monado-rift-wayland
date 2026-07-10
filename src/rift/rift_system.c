@@ -22,6 +22,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+
+#include "math/m_api.h"
 
 #include "os/os_time.h"
 
@@ -438,39 +441,51 @@ rift_system_push_device_pose(struct rift_system *sys,
 	struct xrt_space_relation relation;
 	U_ZERO(&relation);
 
-	int sensor_count = sys->tracker != NULL ? rift_tracker_get_sensor_count(sys->tracker) : 0;
+	/* Only report the tracker's pose once the device has actually been
+	 * seen by a camera; until then its UKF holds only the initial pose,
+	 * which games would render as a device frozen at the origin. Fall
+	 * back to the 3DoF fusion in that case. */
+	bool have_lock = tracked_dev != NULL && rift_tracked_device_has_position_lock(tracked_dev);
 
-	if (sys->tracker != NULL && tracked_dev != NULL) {
+	if (sys->tracker != NULL && tracked_dev != NULL && have_lock) {
 		posef pose;
 		vec3f vel, accel, ang_vel;
 		U_ZERO(&pose);
 		rift_tracked_device_get_view_pose(tracked_dev, &pose, &vel, &accel, &ang_vel);
 
-		relation.pose.orientation.x = pose.orient.x;
-		relation.pose.orientation.y = pose.orient.y;
-		relation.pose.orientation.z = pose.orient.z;
-		relation.pose.orientation.w = pose.orient.w;
-		relation.pose.position.x = pose.pos.x;
-		relation.pose.position.y = pose.pos.y;
-		relation.pose.position.z = pose.pos.z;
-		relation.linear_velocity.x = vel.x;
-		relation.linear_velocity.y = vel.y;
-		relation.linear_velocity.z = vel.z;
+		/* The vendored tracker's world frame has the wearer facing +Z
+		 * at tracking acquisition (the UKF init pose is a 180° Y
+		 * rotation, see rift-tracker.c). OpenXR forward is -Z, so
+		 * every reported pose goes through world_from_tracker, which
+		 * starts as a 180° Y rotation and is redefined on recenter so
+		 * the HMD's current yaw/XZ become forward/origin. */
+		const struct xrt_quat *wq = &sys->world_from_tracker.orientation;
+		const struct xrt_vec3 *wp = &sys->world_from_tracker.position;
+
+		struct xrt_quat q = {pose.orient.x, pose.orient.y, pose.orient.z, pose.orient.w};
+		math_quat_rotate(wq, &q, &relation.pose.orientation);
+
+		struct xrt_vec3 p = {pose.pos.x, pose.pos.y, pose.pos.z};
+		math_quat_rotate_vec3(wq, &p, &p);
+		relation.pose.position.x = p.x + wp->x;
+		relation.pose.position.y = p.y + wp->y;
+		relation.pose.position.z = p.z + wp->z;
+
+		struct xrt_vec3 v = {vel.x, vel.y, vel.z};
+		math_quat_rotate_vec3(wq, &v, &relation.linear_velocity);
+
+		/* The kalman filter's angular velocity is body-frame (gyro
+		 * minus bias) and invariant under the world transform. */
 		relation.angular_velocity.x = ang_vel.x;
 		relation.angular_velocity.y = ang_vel.y;
 		relation.angular_velocity.z = ang_vel.z;
 
 		relation.relation_flags = XRT_SPACE_RELATION_ORIENTATION_VALID_BIT |
 		                          XRT_SPACE_RELATION_ORIENTATION_TRACKED_BIT |
-		                          XRT_SPACE_RELATION_ANGULAR_VELOCITY_VALID_BIT;
-
-		if (sensor_count > 0) {
-			/* Camera sensors present: the Kalman filter provides
-			 * real positional tracking. */
-			relation.relation_flags |= XRT_SPACE_RELATION_POSITION_VALID_BIT |
-			                           XRT_SPACE_RELATION_POSITION_TRACKED_BIT |
-			                           XRT_SPACE_RELATION_LINEAR_VELOCITY_VALID_BIT;
-		}
+		                          XRT_SPACE_RELATION_ANGULAR_VELOCITY_VALID_BIT |
+		                          XRT_SPACE_RELATION_POSITION_VALID_BIT |
+		                          XRT_SPACE_RELATION_POSITION_TRACKED_BIT |
+		                          XRT_SPACE_RELATION_LINEAR_VELOCITY_VALID_BIT;
 	} else if (fallback_fusion != NULL) {
 		relation.pose.orientation = fallback_fusion->rot;
 		relation.relation_flags =
@@ -480,6 +495,104 @@ rift_system_push_device_pose(struct rift_system *sys,
 	}
 
 	m_relation_history_push(rh, &relation, local_ts_ns);
+}
+
+void
+rift_system_recenter(struct rift_system *sys)
+{
+	if (sys->tracker == NULL || sys->hmd_tracked_dev == NULL) {
+		RIFT_WARN("Recenter requested but constellation tracking is not active");
+		return;
+	}
+
+	posef pose;
+	U_ZERO(&pose);
+	rift_tracked_device_get_view_pose(sys->hmd_tracked_dev, &pose, NULL, NULL, NULL);
+
+	/* Yaw-only: rotate the tracker world about Y so the horizontal
+	 * projection of the HMD's view direction lands on -Z. */
+	struct xrt_quat q = {pose.orient.x, pose.orient.y, pose.orient.z, pose.orient.w};
+	struct xrt_vec3 fwd = {0, 0, -1};
+	struct xrt_vec3 f;
+	math_quat_rotate_vec3(&q, &fwd, &f);
+
+	if (f.x * f.x + f.z * f.z < 0.0025f) {
+		RIFT_WARN("Recenter skipped: look roughly at the horizon, not straight up/down");
+		return;
+	}
+
+	float alpha = (float)M_PI - atan2f(f.x, f.z);
+	struct xrt_vec3 up = {0, 1, 0};
+	math_quat_from_angle_vector(alpha, &up, &sys->world_from_tracker.orientation);
+
+	/* Put the corrected HMD XZ at the origin; keep the tracker's floor
+	 * height so standing/room scale stays right. */
+	struct xrt_vec3 p = {pose.pos.x, pose.pos.y, pose.pos.z};
+	struct xrt_vec3 rp;
+	math_quat_rotate_vec3(&sys->world_from_tracker.orientation, &p, &rp);
+	sys->world_from_tracker.position.x = -rp.x;
+	sys->world_from_tracker.position.y = 0;
+	sys->world_from_tracker.position.z = -rp.z;
+
+	RIFT_INFO("Recentered playspace: yaw correction %.1f deg, origin offset (%.2f, %.2f)",
+	          alpha * 180.0 / M_PI, -rp.x, -rp.z);
+
+	/* Confirmation buzz on the right controller, if we have one. */
+	struct rift_touch *touch = sys->touch[1];
+	if (touch != NULL) {
+		struct rift_touch_haptics *h = &touch->haptics;
+		h->haptics_on = true;
+		h->dirty = true;
+		h->low_freq = true;
+		h->amplitude = 128;
+		h->duration_ns = 150 * U_TIME_1MS_IN_NS;
+		h->end_time_ns = UINT64_MAX;
+	}
+}
+
+void
+rift_system_handle_recenter_button(struct rift_system *sys, uint64_t now_ns, bool pressed)
+{
+	if (!pressed) {
+		sys->recenter_hold_start_ns = 0;
+		sys->recenter_hold_done = false;
+		return;
+	}
+
+	if (sys->recenter_hold_start_ns == 0) {
+		sys->recenter_hold_start_ns = now_ns;
+		return;
+	}
+
+	if (!sys->recenter_hold_done && now_ns - sys->recenter_hold_start_ns >= 1000 * U_TIME_1MS_IN_NS) {
+		rift_system_recenter(sys);
+		sys->recenter_hold_done = true;
+	}
+}
+
+/*!
+ * Poor man's runtime control channel: touching the file
+ * $XDG_RUNTIME_DIR/monado-rift-recenter recenters the playspace (the
+ * driver deletes the file once handled). Checked from the io thread.
+ */
+static void
+check_recenter_file(struct rift_system *sys, uint64_t now_ns)
+{
+	if (now_ns - sys->last_recenter_file_check_ns < 500 * U_TIME_1MS_IN_NS) {
+		return;
+	}
+	sys->last_recenter_file_check_ns = now_ns;
+
+	const char *rt = getenv("XDG_RUNTIME_DIR");
+	char path[512];
+	snprintf(path, sizeof(path), "%s/monado-rift-recenter", rt != NULL ? rt : "/tmp");
+
+	if (access(path, F_OK) == 0) {
+		unlink(path);
+		os_mutex_lock(&sys->dev_mutex);
+		rift_system_recenter(sys);
+		os_mutex_unlock(&sys->dev_mutex);
+	}
 }
 
 /*
@@ -516,6 +629,7 @@ rift_system_run_thread(void *ptr)
 		uint64_t now_ns = os_monotonic_get_ns();
 
 		check_keepalive(sys, now_ns);
+		check_recenter_file(sys, now_ns);
 
 		os_mutex_lock(&sys->dev_mutex);
 		if (sys->hid_radio != NULL) {
@@ -597,6 +711,10 @@ rift_system_create(struct xrt_prober *xp,
 	sys->base.type = XRT_TRACKING_TYPE_LIGHTHOUSE; // Outside-in IR constellation tracking
 	snprintf(sys->base.name, XRT_TRACKING_NAME_LEN, "%s", "Oculus Rift CV1 Constellation Tracking");
 	sys->base.offset.orientation.w = 1.0f;
+
+	/* Tracker world -> reported world: starts as a 180° Y rotation (see
+	 * rift_system_push_device_pose), replaced on recenter. */
+	sys->world_from_tracker.orientation.y = 1.0f;
 
 	os_mutex_init(&sys->dev_mutex);
 	os_thread_helper_init(&sys->oth);

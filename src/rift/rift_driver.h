@@ -137,6 +137,11 @@ struct rift_touch
 	bool have_calibration;
 	rift_touch_calibration calibration;
 
+	//! First radio message from this controller was logged.
+	bool seen_radio_message;
+	//! Rate limit for the "calibration still pending" warning.
+	uint64_t last_calib_warn_ns;
+
 	bool time_valid;
 	uint32_t last_timestamp;
 	uint64_t last_msg_local_ts_ns;
@@ -209,6 +214,16 @@ struct rift_system
 	rift_tracker_ctx *tracker;
 	rift_tracked_device *hmd_tracked_dev;
 
+	/* Recenter support (all io-thread state, guarded by dev_mutex).
+	 * world_from_tracker is applied to every pose the tracker reports:
+	 * it starts as a 180° Y rotation (the tracker world has the wearer
+	 * facing +Z at init) and is recomputed on demand so that the HMD's
+	 * current yaw/XZ position become forward/origin. */
+	struct xrt_pose world_from_tracker;
+	uint64_t recenter_hold_start_ns;
+	bool recenter_hold_done;
+	uint64_t last_recenter_file_check_ns;
+
 	//! Buttons of the simple Oculus remote that shipped with the CV1.
 	uint16_t remote_buttons;
 
@@ -259,6 +274,21 @@ rift_system_push_device_pose(struct rift_system *sys,
                              struct m_imu_3dof *fallback_fusion,
                              struct m_relation_history *rh,
                              uint64_t local_ts_ns);
+
+/*!
+ * Re-yaw and re-origin the reported playspace so the HMD's current
+ * facing direction becomes forward and its XZ position the origin.
+ * Called from the io thread with dev_mutex held.
+ */
+void
+rift_system_recenter(struct rift_system *sys);
+
+/*!
+ * Track a hold of the right controller's Oculus button; a ~1s hold
+ * triggers a recenter. Called from the io thread with dev_mutex held.
+ */
+void
+rift_system_handle_recenter_button(struct rift_system *sys, uint64_t now_ns, bool pressed);
 
 /*
  *

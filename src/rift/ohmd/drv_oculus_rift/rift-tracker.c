@@ -1142,3 +1142,19 @@ rift_tracker_get_sensor_count(rift_tracker_ctx *ctx)
 	}
 	return ctx->n_sensors;
 }
+
+/* monado-rift-wayland addition: whether this device has ever been
+ * position-locked by a camera observation. Until then the UKF pose is
+ * just its initial state and should not be reported as tracked. */
+bool
+rift_tracked_device_has_position_lock(rift_tracked_device *dev_base)
+{
+	rift_tracked_device_priv *dev = (rift_tracked_device_priv *)(dev_base);
+	bool ret;
+
+	ohmd_lock_mutex(dev->device_lock);
+	ret = dev->last_observed_pose_ts != 0;
+	ohmd_unlock_mutex(dev->device_lock);
+
+	return ret;
+}

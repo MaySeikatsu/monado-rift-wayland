@@ -31,7 +31,7 @@
  * the openhmdi.h shim. */
 enum u_logging_level rift_log_level;
 
-DEBUG_GET_ONCE_LOG_OPTION(rift_log, "RIFT_LOG", U_LOGGING_WARN)
+DEBUG_GET_ONCE_LOG_OPTION(rift_log, "RIFT_LOG", U_LOGGING_INFO)
 DEBUG_GET_ONCE_BOOL_OPTION(rift_enable_dk2, "RIFT_ENABLE_DK2", false)
 
 static const char *driver_list[] = {

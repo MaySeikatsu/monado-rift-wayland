@@ -125,7 +125,15 @@ rift_touch_load_calibration(struct rift_touch *touch)
 	/* We need the calibration data (from controller flash, over the
 	 * radio) before we can do anything more. This can fail while the
 	 * controller is still waking up - we retry on the next message. */
-	if (rift_touch_get_calibration(NULL, &sys->radio, touch->device_num, &touch->calibration) < 0) {
+	int ret = rift_touch_get_calibration(NULL, &sys->radio, touch->device_num, &touch->calibration);
+	if (ret < 0) {
+		uint64_t now_ns = os_monotonic_get_ns();
+		if (now_ns - touch->last_calib_warn_ns > 5ULL * 1000000000ULL) {
+			touch->last_calib_warn_ns = now_ns;
+			RIFT_WARN("Still waiting for calibration data from Touch controller %d (err %d); "
+			          "no positional tracking until it arrives",
+			          touch->device_num, ret);
+		}
 		return;
 	}
 
@@ -169,11 +177,29 @@ rift_touch_handle_message(struct rift_touch *touch, uint64_t local_ts_ns, pkt_ri
 	}
 	touch->buttons = buttons;
 
+	/* Holding the Oculus button (right controller) for ~1s recenters
+	 * the playspace. Only the right controller drives this so the left
+	 * one can't reset the hold timer. */
+	if (touch->base.device_type == XRT_DEVICE_TYPE_RIGHT_HAND_CONTROLLER) {
+		bool pressed = (buttons & RIFT_TOUCH_CONTROLLER_BUTTON_OCULUS) != 0;
+		rift_system_handle_recenter_button(touch->sys, local_ts_ns, pressed);
+	}
+
 	/* An all-zero IMU block means the controller is connected but
 	 * asleep - nothing more to do. */
 	if (!(msg->touch.timestamp || msg->touch.accel[0] || msg->touch.accel[1] || msg->touch.accel[2] ||
 	      msg->touch.gyro[0] || msg->touch.gyro[1] || msg->touch.gyro[2])) {
+		if (!touch->seen_radio_message) {
+			touch->seen_radio_message = true;
+			RIFT_INFO("Touch controller %d radio link up (controller asleep, move it to wake)",
+			          touch->device_num);
+		}
 		return;
+	}
+
+	if (!touch->seen_radio_message) {
+		touch->seen_radio_message = true;
+		RIFT_INFO("Touch controller %d radio link up (controller awake)", touch->device_num);
 	}
 
 	if (!touch->have_calibration) {
