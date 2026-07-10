@@ -112,10 +112,33 @@ in
         container and scrubs environment variables that break Proton.
       '';
     };
+
+    wayvr = {
+      enable = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = ''
+          Install WayVR (in-VR desktop viewer + dashboard/app launcher)
+          and start it automatically whenever Monado starts, via a systemd
+          user unit bound to both `monado.service` (nixpkgs'
+          {option}`services.monado`) and `monado-rift.service` (this
+          module's service). In VR: double-tap Y on the left Touch
+          controller to show/hide the overlays; the dashboard lives on
+          the watch on your left wrist.
+        '';
+      };
+
+      package = lib.mkOption {
+        type = lib.types.package;
+        default = pkgs.wayvr;
+        defaultText = lib.literalExpression "pkgs.wayvr";
+        description = "The WayVR package.";
+      };
+    };
   };
 
   config = lib.mkIf cfg.enable {
-    home.packages = [ cfg.package ];
+    home.packages = [ cfg.package ] ++ lib.optional cfg.wayvr.enable cfg.wayvr.package;
 
     # Written as inline text (a regular file in the home-manager store dir,
     # one symlink hop from ~/.config) rather than source = "${pkg}/...".
@@ -150,6 +173,32 @@ in
     home.file.".local/bin/monado-vr-wrap" = lib.mkIf cfg.steamWrapper.enable {
       source = ../scripts/monado-vr-wrap.sh;
       executable = true;
+    };
+
+    # Follows whichever Monado unit a setup uses (units listed here that
+    # don't exist are ignored by systemd). --wait covers the race between
+    # this unit starting and Monado's compositor accepting sessions.
+    systemd.user.services.wayvr = lib.mkIf cfg.wayvr.enable {
+      Unit = {
+        Description = "WayVR desktop overlay and dashboard (in-VR)";
+        After = [
+          "monado.service"
+          "monado-rift.service"
+        ];
+        PartOf = [
+          "monado.service"
+          "monado-rift.service"
+        ];
+      };
+      Service = {
+        ExecStart = "${cfg.wayvr.package}/bin/wayvr --wait";
+        Restart = "on-failure";
+        RestartSec = 2;
+      };
+      Install.WantedBy = [
+        "monado.service"
+        "monado-rift.service"
+      ];
     };
 
     systemd.user.services.monado-rift = lib.mkIf cfg.service.enable {

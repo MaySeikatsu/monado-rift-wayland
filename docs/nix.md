@@ -106,6 +106,11 @@ xrizer) connects.
     # at ~/.local/bin/monado-vr-wrap. See docs/steamvr-and-proton.md.
     openvr.enable = true;
     steamWrapper.enable = true;
+
+    # Optional: WayVR (in-VR desktop viewer + dashboard/app launcher),
+    # auto-started by systemd whenever Monado starts. In VR: double-tap Y
+    # on the left controller to show/hide, dashboard on the left wrist.
+    wayvr.enable = true;
   };
 }
 ```

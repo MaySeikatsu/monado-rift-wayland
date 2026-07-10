@@ -35,6 +35,7 @@ consumer Oculus Rift (CV1):
 | DK2 (3DoF + camera) | 🔶 experimental, behind `RIFT_ENABLE_DK2=1` |
 | Wayland direct mode (DRM lease) on Hyprland, Niri, KDE, wlroots | ✅ via Monado's `wayland-direct` backend |
 | Steam VR titles, native + Proton/Windows (Beat Saber, Half-Life Alyx, VRChat tested) | ✅ OpenXR games via GE-Proton, OpenVR games via xrizer — see [docs/steamvr-and-proton.md](docs/steamvr-and-proton.md) |
+| In-VR desktop view + dashboard/app launcher ([WayVR](https://github.com/wlx-team/wayvr)) | ✅ optional, auto-started by the home-manager module (`wayvr.enable`) |
 | SteamVR (Valve's runtime) with the Monado driver plugin | 🔶 plugin is built and shipped, but **untested** — vrcompositor needs X11/DRM-lease direct mode that most Wayland setups can't provide; xrizer replaces it |
 | Headset audio/mic (USB audio class) | ✅ handled by the kernel/PipeWire, nothing to do |
 | Proximity sensor | ❌ not in the known protocol documentation yet |
