@@ -163,7 +163,7 @@ install_monado() {
 	msg "Installed. Next steps:"
 	echo "    sudo ./scripts/install-udev-rules.sh   # device permissions"
 	echo "    ./scripts/set-openxr-runtime.sh        # make Monado the active OpenXR runtime"
-	echo "    ./scripts/register-steamvr-plugin.sh   # let SteamVR use the Rift through Monado"
+	echo "    ./scripts/register-steamvr-plugin.sh   # optional, untested: SteamVR plugin (Steam games don't need it - docs/steamvr-and-proton.md)"
 }
 
 check_deps

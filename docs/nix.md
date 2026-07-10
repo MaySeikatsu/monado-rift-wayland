@@ -63,8 +63,24 @@ services.monado = {
   package = config.hardware.oculus-rift-cv1.package;
   defaultRuntime = true;   # registers the OpenXR runtime system-wide
 };
-# then e.g.:  systemctl --user start monado.service
+# Environment for the unit. Verified on the reference machine
+# (niri + NVIDIA):
+systemd.user.services.monado.environment = {
+  # NVIDIA + Wayland: without this Monado picks its X11 backend and
+  # fails to acquire the headset display.
+  XRT_COMPOSITOR_FORCE_WAYLAND_DIRECT = "1";
+  # Floor height: the tracker's y=0 is roughly at headset level, so
+  # lift the world (meters). Tune live with
+  #   systemctl --user set-environment XRT_TRACKING_ORIGIN_OFFSET_Y=<v>
+  #   systemctl --user restart monado.service
+  XRT_TRACKING_ORIGIN_OFFSET_Y = "0.9";
+};
 ```
+
+No manual starting needed afterwards: `monado.socket` is socket-activated —
+it listens on `$XDG_RUNTIME_DIR/monado_comp_ipc` from login, and systemd
+starts `monado.service` the moment the first OpenXR client (a game, or
+xrizer) connects.
 
 ## home-manager (any distro)
 
@@ -84,9 +100,22 @@ services.monado = {
       RIFT_LOG = "info";
       # RIFT_DISABLE_TRACKER = "1";  # force 3DoF
     };
+
+    # Steam support, both enabled by default:
+    # xrizer as the OpenVR runtime (read-only
+    # ~/.config/openvr/openvrpaths.vrpath - also stops Steam from
+    # re-inserting SteamVR there on every start), and the launch wrapper
+    # at ~/.local/bin/monado-vr-wrap. See docs/steamvr-and-proton.md.
+    openvr.enable = true;
+    steamWrapper.enable = true;
   };
 }
 ```
+
+> home-manager refuses to overwrite pre-existing unmanaged files: if you
+> created `~/.config/openvr/openvrpaths.vrpath` or
+> `~/.local/bin/monado-vr-wrap` by hand earlier, delete them before the
+> first switch.
 
 Then `systemctl --user start monado-rift` (or just run `monado-service`).
 
@@ -99,6 +128,12 @@ sudo ./scripts/install-udev-rules.sh
 ```
 
 ## SteamVR plugin under Nix
+
+> **Untested path** — Steam games don't need SteamVR with this driver
+> (xrizer covers OpenVR titles), and SteamVR's compositor can't drive the
+> headset on most Wayland setups. See
+> [steamvr-and-proton.md](steamvr-and-proton.md) before going down this
+> road.
 
 The plugin is built into the package at
 `$out/share/steamvr-monado`. Register it with SteamVR using the helper

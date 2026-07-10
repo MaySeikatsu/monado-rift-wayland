@@ -1,6 +1,6 @@
 # monado-rift-wayland
 
-**A native [Monado](https://monado.freedesktop.org) driver for the Oculus Rift CV1 on Linux/Wayland — full 6DoF constellation tracking, Touch controllers with haptics, SteamVR and Proton integration.**
+**A native [Monado](https://monado.freedesktop.org) driver for the Oculus Rift CV1 on Linux/Wayland — full 6DoF constellation tracking, Touch controllers with haptics, and Steam/Proton games via OpenXR + xrizer (no SteamVR needed).**
 
 This project packages a complete, self-contained OpenXR stack for the original
 consumer Oculus Rift (CV1):
@@ -29,19 +29,24 @@ consumer Oculus Rift (CV1):
 | Touch controllers: all buttons, thumbsticks, triggers, grips | ✅ implemented |
 | Touch capacitive touch sensing (A/B/X/Y, trigger, thumbstick, thumbrest) | ✅ implemented |
 | Touch haptics (160/320 Hz vibration) | ✅ implemented |
-| Touch 6DoF tracking (LED models read from controller flash calibration) | ✅ implemented |
+| Touch 6DoF tracking (LED models read from controller flash calibration) | 🔶 implemented, position-lock verification on real hardware in progress |
+| Playspace recenter at runtime (hold right Touch **Oculus button** ~1 s, or `touch $XDG_RUNTIME_DIR/monado-rift-recenter`) | ✅ implemented |
 | Oculus Remote buttons | 🔶 decoded, not yet exposed as an input device |
 | DK2 (3DoF + camera) | 🔶 experimental, behind `RIFT_ENABLE_DK2=1` |
 | Wayland direct mode (DRM lease) on Hyprland, Niri, KDE, wlroots | ✅ via Monado's `wayland-direct` backend |
-| SteamVR titles (native + Proton/Windows) | ✅ via SteamVR plugin, OpenComposite or xrizer |
+| Steam VR titles, native + Proton/Windows (Beat Saber, Half-Life Alyx, VRChat tested) | ✅ OpenXR games via GE-Proton, OpenVR games via xrizer — see [docs/steamvr-and-proton.md](docs/steamvr-and-proton.md) |
+| SteamVR (Valve's runtime) with the Monado driver plugin | 🔶 plugin is built and shipped, but **untested** — vrcompositor needs X11/DRM-lease direct mode that most Wayland setups can't provide; xrizer replaces it |
 | Headset audio/mic (USB audio class) | ✅ handled by the kernel/PipeWire, nothing to do |
 | Proximity sensor | ❌ not in the known protocol documentation yet |
 
-> **Hardware testing status:** the driver builds cleanly and the tracking
-> core is battle-tested from OpenHMD, but this specific Monado integration
-> was developed without a headset attached. If you have a CV1, your test
-> reports (`RIFT_LOG=debug`) are the fastest way to get remaining wrinkles
-> ironed out — please open issues!
+> **Hardware testing status:** verified on real hardware on one reference
+> machine (CV1 + 2 sensors; NixOS, niri + xwayland-satellite, NVIDIA
+> GTX 1060): display bring-up at 90 Hz, HMD 6DoF constellation tracking,
+> controller radio + haptics, and Steam/Proton games (Beat Saber,
+> Half-Life Alyx, VRChat) running against the driver. Touch controller
+> 6DoF position lock is still being verified — see
+> [docs/troubleshooting.md](docs/troubleshooting.md). Test reports
+> (`RIFT_LOG=info`) are very welcome — please open issues!
 
 ## Quick start
 
@@ -68,6 +73,11 @@ monado-service
 Connect the CV1's HDMI and USB, plug in at least one sensor camera for 6DoF
 (0 cameras = 3DoF orientation-only mode), and start an OpenXR app.
 
+Once in VR, **hold the right Touch controller's Oculus button for ~1 second**
+(a short buzz confirms) to recenter: the direction you're facing becomes
+forward and where you stand becomes the origin. Without controllers:
+`touch $XDG_RUNTIME_DIR/monado-rift-recenter`.
+
 ### Nix / NixOS / home-manager
 
 The repo is also a flake with a package, NixOS + home-manager modules and
@@ -90,7 +100,8 @@ programs.monado-rift.enable = true;
 
 See [docs/nix.md](docs/nix.md) for the full guide.
 
-For **SteamVR games** (native and Proton), see
+For **Steam VR games** (native and Proton) — tested titles, recommended
+Proton versions, per-game recipes — see
 [docs/steamvr-and-proton.md](docs/steamvr-and-proton.md).
 For compositor specifics (Hyprland, Niri), see
 [docs/wayland-compositors.md](docs/wayland-compositors.md).
@@ -108,8 +119,8 @@ OpenXR app ──► monado-service
                  │         └─ UKF (Kalman) fusion: IMU + camera observations
                  └─ compositor: Wayland DRM-lease direct mode @ 90Hz
 
-SteamVR ──► driver_monado (SteamVR plugin) ──► monado-service
-Proton game (OpenVR) ──► OpenComposite / xrizer ──► OpenXR ──► monado-service
+OpenXR game (native or GE-Proton) ─────────────────────────► monado-service
+OpenVR game (native or Proton) ──► xrizer (OpenVR→OpenXR) ──► monado-service
 ```
 
 The driver registers as a Monado *builder* (`rift`), probing USB VID
@@ -122,11 +133,12 @@ synchronised to the headset's LED blink phase via the radio ID.
 
 | Environment variable | Default | Meaning |
 | --- | --- | --- |
-| `RIFT_LOG` | `warn` | Driver + tracker log level (`trace`/`debug`/`info`/`warn`/`error`) |
+| `RIFT_LOG` | `info` | Driver + tracker log level (`trace`/`debug`/`info`/`warn`/`error`) |
 | `RIFT_DISABLE_TRACKER` | `false` | Force 3DoF, don't touch the cameras |
 | `RIFT_EYE_HEIGHT` | `1.6` | Eye height (m) used for the fixed position in 3DoF mode |
 | `RIFT_ENABLE_DK2` | `false` | Also probe for a DK2 (experimental) |
-| `XRT_COMPOSITOR_FORCE_WAYLAND_DIRECT` | `false` | Force the Wayland DRM-lease direct-mode backend |
+| `XRT_COMPOSITOR_FORCE_WAYLAND_DIRECT` | `false` | Force the Wayland DRM-lease direct-mode backend (recommended on Wayland + NVIDIA) |
+| `XRT_TRACKING_ORIGIN_OFFSET_Y` | `0` | Monado core: lift the tracked world (meters) — floor-height calibration |
 | `XRT_COMPOSITOR_LOG` | `info` | Compositor logging, useful for display debugging |
 
 ## Repository layout
@@ -144,10 +156,10 @@ build.sh                  Superbuild (fetch Monado, integrate, build)
 ## Documentation
 
 - [docs/nix.md](docs/nix.md) — Nix flake, NixOS + home-manager modules, dev shell
-- [docs/steamvr-and-proton.md](docs/steamvr-and-proton.md) — SteamVR plugin, OpenComposite, xrizer, Proton launch options
+- [docs/steamvr-and-proton.md](docs/steamvr-and-proton.md) — Steam & Proton games: xrizer, recommended Proton versions, tested titles, troubleshooting
 - [docs/wayland-compositors.md](docs/wayland-compositors.md) — Hyprland, Niri, DRM lease, fallbacks
 - [docs/tracking.md](docs/tracking.md) — sensor setup, 6DoF vs 3DoF, tracking internals
-- [docs/troubleshooting.md](docs/troubleshooting.md) — permissions, display, controllers, SteamVR
+- [docs/troubleshooting.md](docs/troubleshooting.md) — permissions, display, controllers, orientation/recenter, Steam games
 - [docs/development.md](docs/development.md) — architecture, vendored code provenance, forward-porting
 
 ## Credits & license

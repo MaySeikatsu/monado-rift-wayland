@@ -1,114 +1,171 @@
-# SteamVR and Proton games with the Rift CV1
+# Steam and Proton VR games with the Rift CV1
 
-There are two complementary ways to run Steam VR titles, and you can have
-both set up at the same time:
+The tested, recommended way to run Steam VR titles on this driver does
+**not** involve SteamVR at all:
 
-1. **SteamVR with the Monado plugin** — real SteamVR runs, but gets the
-   headset, tracking and Touch controllers from Monado. Best compatibility
-   with games that hard-require SteamVR.
-2. **OpenComposite / xrizer (no SteamVR at all)** — OpenVR games talk to a
-   translation layer that maps OpenVR onto OpenXR/Monado directly. Lower
-   overhead, fewer moving parts, but a few titles misbehave.
-
-Native OpenXR games need no translation at all — just make Monado the
-active runtime (`./scripts/set-openxr-runtime.sh`).
-
-## Option 1: SteamVR with the Monado driver plugin
-
-The build produces SteamVR driver plugin (`driver_monado`). Register it:
-
-```sh
-./scripts/register-steamvr-plugin.sh
+```
+OpenXR games (e.g. Beat Saber):    game ──► wineopenxr (GE-Proton) ──► Monado
+OpenVR games (e.g. Alyx, VRChat):  game ──► openvr_api.dll ──► Proton vrclient bridge
+                                     ──► host openvrpaths.vrpath ──► xrizer ──► OpenXR ──► Monado
 ```
 
-Then:
+[xrizer](https://github.com/Supreeeme/xrizer) is a reimplementation of the
+OpenVR runtime on top of OpenXR. Both native Linux OpenVR games and
+Windows-via-Proton OpenVR games resolve their runtime through the host's
+`~/.config/openvr/openvrpaths.vrpath` (Proton's vrclient bridge forwards to
+it), so with xrizer registered there they talk straight to Monado. Games see
+a normal "Oculus Touch" setup: thumbsticks, A/B/X/Y with capacitive touch,
+triggers, grips and haptics.
 
-1. Start `monado-service` (or the systemd unit) *before* SteamVR.
-2. Launch SteamVR. It should show the CV1 as a "Monado" headset, with both
-   Touch controllers bound to the Oculus Touch interaction profile.
-3. If SteamVR's built-in device handling fights over the hardware, disable
-   unneeded add-ons under *SteamVR settings → Startup/Shutdown → Manage
-   Add-Ons*.
+## TL;DR — the tested recipe
 
-Proton/Windows games launched from SteamVR work as usual — SteamVR is the
-OpenVR runtime, Monado is invisible to the game.
+1. **Monado running** (socket-activated systemd unit, or `monado-service`).
+2. **xrizer registered** as the only OpenVR runtime (see
+   [Registering xrizer](#registering-xrizer) — the file must be read-only!).
+3. **Every VR game** gets the launch option
+   `/home/you/.local/bin/monado-vr-wrap %command%`
+   (wrapper shipped as `scripts/monado-vr-wrap.sh`, installed by the
+   home-manager module).
+4. **Proton version**: GE-Proton for everything — except Source 2 games
+   (Half-Life Alyx), which need **Valve Proton 8.0**. Details below.
+5. One VR game at a time.
 
-## Option 2: OpenComposite or xrizer (OpenVR → OpenXR)
+## Tested games (real CV1 hardware, 2026-07)
 
-[xrizer](https://github.com/Supreeeme/xrizer) is the actively developed
-reimplementation of OpenVR on top of OpenXR;
-[OpenComposite](https://gitlab.com/znixian/OpenOVR) is its predecessor and
-still works better for a handful of titles.
+| Game | App ID | VR API | Proton | Notes |
+| --- | --- | --- | --- | --- |
+| Beat Saber | 620980 | OpenXR (Unity) | GE-Proton10-33 | Renders in-headset; the reference OpenXR title |
+| Half-Life Alyx | 546560 | OpenVR (Source 2) | **Valve Proton 8.0** | Proton 9/10 crash at map load (IVRMailbox, see below) |
+| VRChat | 438100 | OpenVR (Unity) | GE-Proton10-33 | Anti-cheat needs a healthy Wine prefix (see troubleshooting) |
 
-```sh
-# xrizer
-cargo build --release   # in the xrizer checkout
-# point Steam's OpenVR at it via ~/.config/openvr/openvrpaths.vrpath
-# (see the xrizer README for the exact runtime entry)
+All three launch, connect to headset + sensors + controllers and reach
+`XR_SESSION_STATE_FOCUSED`. Touch-controller 6DoF position lock is still
+being verified on real hardware — see
+[troubleshooting.md](troubleshooting.md#controllers-dont-show-up--dont-move).
+
+## Choosing a Proton version (and why not just "latest")
+
+Two independent, deliberate incompatibilities in Valve's Proton force the
+version choice:
+
+1. **Valve Proton gates OpenXR on SteamVR.** Its `wineopenxr` refuses to
+   initialize unless a registry key (`HKCU\Software\Wine\VR` `state`) that
+   *only SteamVR* sets is present; with any other runtime it returns error
+   `-6` and the game reports `XR_ERROR_RUNTIME_UNAVAILABLE`.
+   [GE-Proton](https://github.com/GloriousEggroll/proton-ge-custom) removes
+   that gate → **all OpenXR games need GE-Proton**.
+2. **Proton 9+ crashes Source 2 games on non-SteamVR runtimes.** Source 2
+   requests the undocumented `IVRMailbox` OpenVR interface; Proton 9/10's
+   rewritten vrclient thunk exec-faults on it (Proton log signature:
+   `_wassert` ... `winIVRMailbox.c:51`, crash in `vrclient_x64.so`) with any
+   runtime that isn't real SteamVR. Proton 8's older winelib vrclient
+   handles it → **Source 2 games (Alyx) need Valve Proton 8.0**.
+   Unity/Unreal OpenVR games never touch IVRMailbox, so GE is fine there.
+
+Decision tree for a game not listed above:
+
+1. Game uses OpenXR → **GE-Proton**, done.
+2. Game uses OpenVR and is Unity/Unreal (most of them) → **GE-Proton** +
+   xrizer.
+3. Game uses OpenVR and is Source 2 / a Valve title → **Valve Proton 8.0** +
+   xrizer.
+4. Not sure? Start with GE-Proton. If it crashes at load with the
+   `winIVRMailbox.c:51` signature in `PROTON_LOG=1` output → switch to
+   Proton 8.0. If it reports the headset missing → check the
+   [xrizer registration](#registering-xrizer).
+
+Set the version per game under *Properties → Compatibility*.
+
+## Registering xrizer
+
+With the home-manager module this is `programs.monado-rift.openvr.enable`
+(default on) — it writes `~/.config/openvr/openvrpaths.vrpath` as a
+read-only store symlink. Manually:
+
+```json
+{
+  "config": ["/home/you/.local/share/Steam/config"],
+  "external_drivers": null,
+  "jsonid": "vrpathreg",
+  "log": ["/home/you/.local/share/Steam/logs"],
+  "runtime": ["/path/to/xrizer/lib/xrizer"],
+  "version": 1
+}
 ```
 
-### Proton (Windows) titles
+then **make it read-only** (`chmod 444`): Steam rewrites this file on every
+start, re-inserting SteamVR as the first runtime, which silently breaks the
+whole chain. This was the single most confusing failure during bring-up —
+games just say "headset not found" while everything else is fine.
 
-Getting a Proton VR game (native OpenXR, e.g. Beat Saber; or OpenVR via
-xrizer/OpenComposite) talking to Monado through the Steam Linux Runtime
-container has two hard requirements that took real debugging to pin down:
+## The launch wrapper (required for every Proton VR game)
 
-**1. Use GE-Proton, not Valve's Proton Experimental / Proton 9-11.**
+pressure-vessel (Steam's container) imports the OpenXR runtime manifest
+automatically, but does **not** share the Monado IPC socket, and Steam
+strips `PRESSURE_VESSEL_*` variables from env-prefix launch options — so a
+wrapper script must set it. The repo ships it
+(`scripts/monado-vr-wrap.sh`, installed to `~/.local/bin/monado-vr-wrap` by
+the home-manager module):
 
-Valve's `wineopenxr` deliberately gates VR initialization on a registry
-key (`HKCU\Software\Wine\VR` `state`) that *only SteamVR* sets. With any
-other OpenXR runtime its `xrNegotiateLoaderRuntimeInterface` returns
-error `-6` and the game fails with `XR_ERROR_RUNTIME_UNAVAILABLE` — even
-though the runtime, manifest and IPC socket are all perfectly reachable
-inside the container. [GE-Proton](https://github.com/GloriousEggroll/proton-ge-custom)
-carries a patched `wineopenxr` without that SteamVR gate.
+- exports `PRESSURE_VESSEL_FILESYSTEMS_RW=$XDG_RUNTIME_DIR/monado_comp_ipc`
+- unsets `SDL_VIDEODRIVER` (a session-wide `wayland` value leaks into
+  wine's Windows SDL, which has no wayland/x11 backends, and breaks window
+  and D3D11 creation — Proton 8 is affected)
 
-Set it under *Properties → Compatibility → Force GE-Proton*.
-
-**2. Share the Monado IPC socket into the container.**
-
-pressure-vessel imports the OpenXR runtime manifest automatically (it
-reads `~/.config/openxr/1/active_runtime.json`), but it does *not* share
-`$XDG_RUNTIME_DIR/monado_comp_ipc`, so the game can load the runtime but
-never reach the running service. You'd normally pass
-`PRESSURE_VESSEL_FILESYSTEMS_RW=$XDG_RUNTIME_DIR/monado_comp_ipc`, but
-**Steam strips `PRESSURE_VESSEL_*` from env-prefix launch options**, so it
-has to be set by a tiny wrapper that Steam execs. Ship this as
-`~/.local/bin/monado-vr-wrap`:
-
-```sh
-#!/bin/sh
-export PRESSURE_VESSEL_FILESYSTEMS_RW="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/monado_comp_ipc"
-exec "$@"
-```
-
-and set the launch option to:
+Launch option for every VR game:
 
 ```
 /home/you/.local/bin/monado-vr-wrap %command%
 ```
 
-> Note: `PRESSURE_VESSEL_IMPORT_OPENXR_1_RUNTIMES=1` is **not** needed and
-> on NixOS is counterproductive — the manifest is already visible, and the
+> `PRESSURE_VESSEL_IMPORT_OPENXR_1_RUNTIMES=1` is **not** needed and on
+> NixOS is counterproductive — the manifest is already visible, and the
 > importer's host-side probing fails on NixOS' library layout.
 
-Verified working end-to-end: Beat Saber (native Unity OpenXR) reaches
-`XR_SESSION_STATE_FOCUSED` and Monado logs `BEGIN_SESSION` on the Rift CV1
-via GE-Proton + the wrapper.
+## Troubleshooting Steam games
 
-With xrizer/OpenComposite handling OpenVR titles and Monado exposing the
-full Oculus Touch profile, both native Linux VR games and
-Proton-compatible Windows VR games see a normal "Oculus Touch" setup:
-thumbsticks, A/B/X/Y with capacitive touch, triggers, grips and haptics.
+- **Black screen in-game, no crash** — a previous VR game's process is
+  still connected and holds Monado's primary session (the new game never
+  leaves `READY`). Check for leftovers
+  (`ps -eo args | grep -iE "hlvr|vrchat|beat"`), kill them, or restart
+  Monado. One VR game at a time.
+- **"headset not found" in an OpenVR game** — Steam rewrote
+  `openvrpaths.vrpath`; verify xrizer is `runtime[0]` and the file is
+  read-only.
+- **`XR_ERROR_RUNTIME_UNAVAILABLE` / wineopenxr error -6** — the game runs
+  under Valve Proton but is an OpenXR title → GE-Proton.
+- **Crash at map/level load, `winIVRMailbox.c:51` in the Proton log** —
+  Source 2 + Proton 9/10 → Valve Proton 8.0.
+- **"Could not create SDL window: wayland,x11 not available" / no D3D11
+  device** — `SDL_VIDEODRIVER` leaked into the prefix; use the wrapper.
+- **VRChat: "Cannot open Service Control Manager" / RPC unavailable** —
+  the anti-cheat's service check hit a broken Wine prefix. Move
+  `compatdata/438100` aside, let Steam create a fresh prefix, log in again.
+- **Game takes 10–20 min to appear after a Proton/config change** — Steam
+  runs shader precompilation (`iscriptevaluator`, fossilize) first; on a
+  HDD this is slow. Don't diagnose a hang before it finishes.
+- **World faces the wrong way / you spawn off-center** — recenter: hold the
+  right Touch **Oculus button** ~1 s (buzz confirms), or
+  `touch $XDG_RUNTIME_DIR/monado-rift-recenter`.
 
-## Which one should I use?
+## SteamVR itself (Valve's runtime): status
 
-| | SteamVR + plugin | OpenComposite / xrizer |
-| --- | --- | --- |
-| Game compatibility | Highest | Good and improving |
-| Overhead / latency | Higher (extra compositor hop) | Lower |
-| SteamVR overlay/dashboard | Yes | No |
-| Setup complexity | Medium | Medium |
+The build ships Monado's SteamVR driver plugin
+(`share/steamvr-monado`, register with
+`./scripts/register-steamvr-plugin.sh`), which would let real SteamVR read
+the CV1's tracking from Monado. **This path is untested with the CV1** and
+has a hard structural problem: SteamVR's `vrcompositor` can only drive the
+headset display in direct mode via X11 (or XWayland DRM leasing), which
+typical Wayland setups — e.g. niri/Hyprland with xwayland-satellite,
+especially on NVIDIA — do not provide, and Monado itself holds the CV1's
+DRM lease while running. On the reference machine this is a verified dead
+end.
 
-Start with xrizer for the games you play; fall back to SteamVR-with-plugin
-for anything that misbehaves.
+In practice you don't need it: everything games require from SteamVR (the
+OpenVR runtime API) is provided by xrizer. If you run a full X11 session
+and get the plugin working, please open an issue with your setup — reports
+welcome.
+
+[OpenComposite](https://gitlab.com/znixian/OpenOVR), xrizer's predecessor,
+may still work better for individual OpenVR titles; it is untested with
+this driver.
