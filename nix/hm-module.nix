@@ -176,8 +176,10 @@ in
     };
 
     # Follows whichever Monado unit a setup uses (units listed here that
-    # don't exist are ignored by systemd). --wait covers the race between
-    # this unit starting and Monado's compositor accepting sessions.
+    # don't exist are ignored by systemd). wayvr has no wait/retry for a
+    # runtime that isn't accepting sessions yet, so Restart covers the
+    # startup race with Monado's compositor; RestartSec must keep the
+    # retry rate under systemd's default start limit (5 per 10s).
     systemd.user.services.wayvr = lib.mkIf cfg.wayvr.enable {
       Unit = {
         Description = "WayVR desktop overlay and dashboard (in-VR)";
@@ -191,9 +193,9 @@ in
         ];
       };
       Service = {
-        ExecStart = "${cfg.wayvr.package}/bin/wayvr --wait";
+        ExecStart = "${cfg.wayvr.package}/bin/wayvr --openxr --replace";
         Restart = "on-failure";
-        RestartSec = 2;
+        RestartSec = 5;
       };
       Install.WantedBy = [
         "monado.service"
