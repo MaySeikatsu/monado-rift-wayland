@@ -109,6 +109,14 @@ stdenv.mkDerivation {
         sed -i "s|^ExecStart=.*monado-service.*$|ExecStart=$out/bin/monado-service|" "$unit"
       fi
     done
+
+    # This Monado predates manifests advertising libmonado (the runtime
+    # control API); overlay tools like WayVR need the path to manage
+    # client z-order/visibility over games. Add the key upstream uses.
+    manifest=$out/share/openxr/1/openxr_monado.json
+    if [ -f "$manifest" ] && [ -f "$out/lib/libmonado.so" ]; then
+      sed -i "s|\"library_path\": \(.*\)$|\"library_path\": \1,\n        \"MND_libmonado_path\": \"$out/lib/libmonado.so\"|" "$manifest"
+    fi
   '';
 
   meta = with lib; {

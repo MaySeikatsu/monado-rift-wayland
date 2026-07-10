@@ -151,6 +151,9 @@ in
         runtime = {
           name = "Monado";
           library_path = "${cfg.package}/lib/libopenxr_monado.so";
+          # Runtime control API; lets overlay tools (WayVR) manage client
+          # z-order/visibility over games instead of hoping for the best.
+          MND_libmonado_path = "${cfg.package}/lib/libmonado.so";
         };
       };
     };
