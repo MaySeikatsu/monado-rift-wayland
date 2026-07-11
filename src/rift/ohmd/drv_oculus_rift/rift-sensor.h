@@ -77,5 +77,8 @@ void rift_sensor_free (rift_sensor_ctx *sensor_ctx);
 const char *rift_sensor_serial_no (rift_sensor_ctx *sensor);
 bool rift_sensor_add_device (rift_sensor_ctx *ctx, rift_tracked_device *device);
 bool rift_sensor_start(rift_sensor_ctx *sensor);
+/* Recover the sensor's video stream if it stopped delivering frames.
+ * Call periodically; must not be called from the USB event thread. */
+void rift_sensor_check_video_health(rift_sensor_ctx *sensor);
 
 #endif

@@ -27,12 +27,14 @@ typedef struct rift_sensor_usb_device rift_sensor_usb_device;
 static bool rift_sensor_usb_start (rift_sensor_device *device, uint8_t min_frames, rift_sensor_device_frame_cb frame_cb, void *cb_data);
 static void rift_sensor_usb_stop (rift_sensor_device *device);
 static void rift_sensor_usb_free (rift_sensor_device *device);
+static void rift_sensor_usb_check_health (rift_sensor_device *device);
 
 static rift_sensor_device_funcs usb_device_funcs =
 {
 	rift_sensor_usb_start,
 	rift_sensor_usb_stop,
 	rift_sensor_usb_free,
+	rift_sensor_usb_check_health,
 };
 
 struct rift_sensor_usb_device
@@ -279,6 +281,33 @@ rift_sensor_usb_stop (rift_sensor_device *dev)
 	if (udev->stream_started) {
 		rift_sensor_uvc_stream_stop(&udev->uvc_stream);
 		udev->stream_started = false;
+	}
+}
+
+/* ~1 second of nothing but short frames at the sensor's 54 fps. Normal
+ * operation drops the odd frame and resets the count on every complete
+ * one - only a desynced iso stream (which never recovers by itself)
+ * sustains a run this long. */
+#define STREAM_DESYNC_FRAMES 60
+
+static void
+rift_sensor_usb_check_health (rift_sensor_device *base_dev)
+{
+	rift_sensor_usb_device *dev = (rift_sensor_usb_device *)(base_dev);
+
+	if (!dev->stream_started)
+		return;
+
+	if (dev->uvc_stream.consecutive_short_frames < STREAM_DESYNC_FRAMES)
+		return;
+
+	LOGW("Sensor %d (%s): video stream desynced (%d consecutive short frames) - restarting stream",
+	     dev->id, dev->serial_no, dev->uvc_stream.consecutive_short_frames);
+
+	if (rift_sensor_uvc_stream_soft_restart(&dev->uvc_stream) < 0) {
+		LOGE("Sensor %d (%s): stream restart failed - tracking from this sensor is lost until the service restarts",
+		     dev->id, dev->serial_no);
+		dev->stream_started = false;
 	}
 }
 

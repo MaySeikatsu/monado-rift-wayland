@@ -224,6 +224,9 @@ struct rift_system
 	bool recenter_hold_done;
 	uint64_t last_recenter_file_check_ns;
 
+	//! Last periodic sensor-stream health check (io thread).
+	uint64_t last_sensor_health_check_ns;
+
 	//! Buttons of the simple Oculus remote that shipped with the CV1.
 	uint16_t remote_buttons;
 

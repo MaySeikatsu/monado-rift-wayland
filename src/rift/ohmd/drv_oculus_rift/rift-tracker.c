@@ -1143,6 +1143,23 @@ rift_tracker_get_sensor_count(rift_tracker_ctx *ctx)
 	return ctx->n_sensors;
 }
 
+/* monado-rift-wayland addition: recover sensor video streams that have
+ * stopped delivering (desynced USB iso stream = endless short frames).
+ * Called periodically from the driver io thread - must not run on the
+ * USB event thread, the recovery drain depends on it. */
+void
+rift_tracker_check_sensor_health(rift_tracker_ctx *ctx)
+{
+	int i;
+
+	if (ctx == NULL) {
+		return;
+	}
+	for (i = 0; i < ctx->n_sensors; i++) {
+		rift_sensor_check_video_health(ctx->sensors[i]);
+	}
+}
+
 /* monado-rift-wayland addition: whether this device has ever been
  * position-locked by a camera observation. Until then the UKF pose is
  * just its initial state and should not be reported as tracked. */

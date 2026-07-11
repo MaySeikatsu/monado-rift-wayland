@@ -162,7 +162,7 @@ void process_payload(struct rift_sensor_uvc_stream *stream, unsigned char *paylo
 		 * when we see the frame change: */
 		if (stream->frame_collected != 0 && pts != stream->cur_pts &&
 				stream->format != OHMD_VIDEO_FRAME_FORMAT_JPEG) {
-			printf("UVC PTS changed in-frame at %u bytes. Lost %u ms\n",
+			LOGD("UVC PTS changed in-frame at %u bytes. Lost %u ms",
 			    stream->frame_collected,
 			    (pts - stream->cur_pts) * 1000 / RIFT_SENSOR_CLOCK_FREQ);
 			stream->cur_pts = pts;
@@ -179,9 +179,20 @@ void process_payload(struct rift_sensor_uvc_stream *stream, unsigned char *paylo
 		uint64_t time;
 
 		if (stream->frame_collected > 0) {
-			printf("UVC Dropping short frame: %u < %u (%d lost)\n",
-						stream->frame_collected, stream->frame_size,
-						stream->frame_size - stream->frame_collected);
+			stream->consecutive_short_frames++;
+			stream->short_frames_since_log++;
+			/* A desynced stream drops every frame at camera rate -
+			 * log the first of a burst, then only summaries. */
+			if (stream->short_frames_since_log == 1) {
+				LOGW("UVC Dropping short frame: %u < %u (%d lost)",
+							stream->frame_collected, stream->frame_size,
+							stream->frame_size - stream->frame_collected);
+			} else if (stream->short_frames_since_log >= 256) {
+				LOGW("UVC Dropped %d more short frames (last: %u < %u)",
+							stream->short_frames_since_log,
+							stream->frame_collected, stream->frame_size);
+				stream->short_frames_since_log = 0;
+			}
 		}
 
 		/* Start of new frame */
@@ -267,6 +278,8 @@ void process_payload(struct rift_sensor_uvc_stream *stream, unsigned char *paylo
 	}
 
 	if (stream->frame_collected == stream->frame_size || is_eof) {
+		stream->consecutive_short_frames = 0;
+		stream->short_frames_since_log = 0;
 		stream->cur_frame->data_size = stream->frame_collected;
 		if (stream->frame_cb) {
 			stream->frame_cb(stream, stream->cur_frame, stream->frame_cb_data);
@@ -577,6 +590,58 @@ int rift_sensor_uvc_stream_stop(struct rift_sensor_uvc_stream *stream)
 	}
 	free(stream->alloced_frames);
 	free(stream->free_frames);
+
+	return 0;
+}
+
+int rift_sensor_uvc_stream_soft_restart(struct rift_sensor_uvc_stream *stream)
+{
+	int ret, i;
+
+	if (!stream->video_running)
+		return 0;
+
+	/* Halt the endpoint, then drain the in-flight transfers. The libusb
+	 * event thread keeps pumping and signals the waiters as each
+	 * transfer completes/cancels. */
+	ret = libusb_set_interface_alt_setting(stream->devh, 1, 0);
+	if (ret)
+		LOGW("Stream restart: failed to clear USB alt setting (%d)", ret);
+
+	libusb_lock_event_waiters(stream->usb_ctx);
+	stream->video_running = false;
+	while (stream->active_transfers > 0) {
+		if (libusb_wait_for_event(stream->usb_ctx, NULL))
+			break;
+	}
+	libusb_unlock_event_waiters(stream->usb_ctx);
+
+	/* Reset frame accumulation. All frame buffers and transfer
+	 * allocations are kept - frames held by the analysis threads
+	 * stay valid. frame_id -1 forces a clean new-frame start. */
+	stream->frame_collected = 0;
+	stream->skip_frame = false;
+	stream->frame_id = -1;
+	stream->consecutive_short_frames = 0;
+	stream->short_frames_since_log = 0;
+
+	ret = libusb_set_interface_alt_setting(stream->devh, 1, stream->alt_setting);
+	if (ret) {
+		LOGE("Stream restart: failed to restore alt setting %d (%d)", stream->alt_setting, ret);
+		return ret;
+	}
+
+	stream->video_running = true;
+	for (i = 0; i < stream->num_transfers; i++) {
+		ret = libusb_submit_transfer(stream->transfer[i]);
+		if (ret < 0) {
+			LOGE("Stream restart: resubmit of transfer %d failed (%d)", i, ret);
+			stream->active_transfers = i;
+			stream->video_running = false;
+			return ret;
+		}
+	}
+	stream->active_transfers = stream->num_transfers;
 
 	return 0;
 }

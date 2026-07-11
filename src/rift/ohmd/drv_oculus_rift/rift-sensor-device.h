@@ -35,6 +35,11 @@ struct rift_sensor_device_funcs {
 	bool (*start) (rift_sensor_device *device, uint8_t min_frames, rift_sensor_device_frame_cb frame_cb, void *cb_data);
 	void (*stop) (rift_sensor_device *device);
 	void (*free) (rift_sensor_device *device);
+	/* Optional (may be NULL). Check that the video stream is still
+	 * delivering frames and recover it if not. Called periodically from
+	 * a thread that is neither the libusb event thread nor a frame
+	 * callback. */
+	void (*check_health) (rift_sensor_device *device);
 };
 
 struct rift_sensor_device {
@@ -47,5 +52,9 @@ struct rift_sensor_device {
 
 #define rift_sensor_device_stop_video(d) (d)->funcs->stop((d))
 #define rift_sensor_device_free(d) (d)->funcs->free((d))
+#define rift_sensor_device_check_health(d) do { \
+		if ((d)->funcs->check_health != NULL) \
+			(d)->funcs->check_health((d)); \
+	} while (0)
 
 #endif

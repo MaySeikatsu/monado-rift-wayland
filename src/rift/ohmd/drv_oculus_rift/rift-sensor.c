@@ -385,6 +385,12 @@ rift_sensor_start(rift_sensor_ctx *sensor)
 }
 
 void
+rift_sensor_check_video_health(rift_sensor_ctx *sensor)
+{
+	rift_sensor_device_check_health (sensor->dev);
+}
+
+void
 rift_sensor_free (rift_sensor_ctx *sensor_ctx)
 {
 	if (sensor_ctx == NULL)

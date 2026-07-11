@@ -36,6 +36,14 @@ struct rift_sensor_uvc_stream {
 	/* true if we're skipping the current frame */
 	bool skip_frame;
 
+	/* Stream health, written on the USB event thread. Once the iso
+	 * stream loses sync every frame arrives short and nothing is ever
+	 * delivered again until the stream restarts - the watchdog uses
+	 * this count to detect that. */
+	int consecutive_short_frames;
+	/* Short frames since the last log line (for rate limiting) */
+	int short_frames_since_log;
+
 	/* Time at which we started skipping frames */
 	uint64_t skip_frame_start;
 
@@ -71,6 +79,12 @@ int rift_sensor_uvc_stream_start(rift_sensor_uvc_stream *stream, uint8_t min_fra
 	rift_sensor_uvc_stream_frame_cb frame_cb, void *frame_cb_data);
 
 int rift_sensor_uvc_stream_stop(rift_sensor_uvc_stream *stream);
+
+/* Drain the in-flight iso transfers, re-negotiate the streaming endpoint
+ * and resubmit, keeping all frame allocations. Recovers a desynced
+ * stream (endless short frames). Must NOT be called from the libusb
+ * event thread - the drain relies on that thread pumping events. */
+int rift_sensor_uvc_stream_soft_restart(rift_sensor_uvc_stream *stream);
 
 /* This can only be called safely either before the stream is started
  * or from one of the callbacks */

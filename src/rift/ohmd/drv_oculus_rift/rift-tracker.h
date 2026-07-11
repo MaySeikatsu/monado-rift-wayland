@@ -29,6 +29,7 @@ void rift_tracker_free (rift_tracker_ctx *ctx);
 
 /* monado-rift-wayland additions */
 int rift_tracker_get_sensor_count(rift_tracker_ctx *ctx);
+void rift_tracker_check_sensor_health(rift_tracker_ctx *ctx);
 bool rift_tracked_device_has_position_lock(rift_tracked_device *dev_base);
 
 void rift_tracked_device_imu_update(rift_tracked_device *dev, uint64_t local_ts, uint32_t device_ts, float dt, const vec3f* ang_vel, const vec3f* accel, const vec3f* mag_field);

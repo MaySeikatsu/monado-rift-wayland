@@ -635,6 +635,15 @@ rift_system_run_thread(void *ptr)
 		check_keepalive(sys, now_ns);
 		check_recenter_file(sys, now_ns);
 
+		/* Once a second, recover camera streams that stopped delivering
+		 * (desynced USB iso stream). Safe from this thread: the tracker's
+		 * USB event thread keeps pumping during the recovery drain. */
+		if (sys->tracker != NULL &&
+		    now_ns - sys->last_sensor_health_check_ns > (uint64_t)1000 * U_TIME_1MS_IN_NS) {
+			sys->last_sensor_health_check_ns = now_ns;
+			rift_tracker_check_sensor_health(sys->tracker);
+		}
+
 		os_mutex_lock(&sys->dev_mutex);
 		if (sys->hid_radio != NULL) {
 			for (int i = 0; i < 2; i++) {
